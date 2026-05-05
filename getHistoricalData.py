@@ -153,18 +153,28 @@ def cleanPlayerDataframe(df, fixturesdf, playerTeamID):
     position_dict = {"GK": 0, "DEF": 1, "MID": 2, "FWD": 3}
 
     points_last_5 = []
-    minutes_last_5 = []
+    minutes_per_game_last_5 = []
     goals_last_5 = []
     assists_last_5 = []
     clean_sheets_last_5 = []
     bonus_points_last_5 = []
+    goals_conceeded_last_5 = []
+    influence_last_5 = []
+    ict_index_last_5 = []
+    player_price_diff_last_5 = [] #holds the difference in the player's price in the last 5 games
+    yellow_cards_last_5 = []
+    red_cards_last_5 = []
+    starts_last_5 = []
+    transfers_in_last_5 = []
+    transfers_out_last_5 = []
 
-    ict_index = []
+    # ict_index = []
     player_position = []
     player_price = []
 
     xG_per_90 = []
     xA_per_90 = []
+    xGoals_Conceeded_per_90 = []
 
     #home/away in next 7
     home_away_current_plus_1 = [] #home = 1, away = 0
@@ -190,15 +200,17 @@ def cleanPlayerDataframe(df, fixturesdf, playerTeamID):
         player_position.append(position_dict[row['position']])
 
         if index >= 1:
-            ict_index.append(df.iloc[index - 1]['ict_index'])
+            # ict_index.append(df.iloc[index - 1]['ict_index'])
             player_price.append(df.iloc[index - 1]['value']/10) #divide by 10 to get 45 to be 4.5
-            xG_per_90.append(df.iloc[index - 1]['expected_goals'])
-            xA_per_90.append(df.iloc[index - 1]['expected_assists'])
+            xG_per_90.append(round(df.iloc[index - 1]['expected_goals'], 2))
+            xA_per_90.append(round(df.iloc[index - 1]['expected_assists'], 2))
+            xGoals_Conceeded_per_90.append(round(df.iloc[index - 1]['expected_goals_conceded'], 2))
         else:
-            ict_index.append(0)
+            # ict_index.append(0)
             player_price.append(0)
             xG_per_90.append(0)
             xA_per_90.append(0)
+            xGoals_Conceeded_per_90.append(0)
 
         points = 0
         minutes = 0
@@ -206,6 +218,15 @@ def cleanPlayerDataframe(df, fixturesdf, playerTeamID):
         assists = 0
         clean_sheets = 0
         bonus = 0
+        goals_conceeded = 0
+        influence = 0
+        ict_index = 0
+        yellow_cards = 0
+        red_cards = 0
+        starts = 0
+        transfers_in = 0
+        transfers_out = 0
+
         for i in range(index - 1, index - 6, -1):
             if i < 0: #no negative rows
                 break
@@ -217,14 +238,38 @@ def cleanPlayerDataframe(df, fixturesdf, playerTeamID):
             assists += past_row['assists']
             clean_sheets += past_row['clean_sheets']
             bonus += past_row['bonus']
+            goals_conceeded += past_row['goals_conceded']
+            influence += past_row['influence']
+            ict_index += round(past_row['ict_index'], 2)
+            yellow_cards += past_row['yellow_cards']
+            red_cards += past_row['red_cards']
+            starts += past_row['starts']
+            transfers_in += past_row['transfers_in']
+            transfers_out += past_row['transfers_out']
+
+        games_played = sum(1 for i in range(index-1, index-6, -1) if i >= 0 and df.iloc[i]['minutes'] > 0)
 
         points_last_5.append(points)
-        minutes_last_5.append(minutes)
+        minutes_per_game_last_5.append(round(minutes / games_played, 2) if games_played > 0 else 0)
         goals_last_5.append(goals)
         assists_last_5.append(assists)
         clean_sheets_last_5.append(clean_sheets)
         bonus_points_last_5.append(bonus)
+        goals_conceeded_last_5.append(goals_conceeded)
+        influence_last_5.append(influence)
+        ict_index_last_5.append(ict_index)
+        yellow_cards_last_5.append(yellow_cards)
+        red_cards_last_5.append(red_cards)
+        starts_last_5.append(starts)
+        transfers_in_last_5.append(transfers_in)
+        transfers_out_last_5.append(transfers_out)
 
+        if index - 6 >= 0:
+            #players with a +price_diff means their value increased, players with a -price_diff, means their value decreased
+            player_price_diff = df.iloc[index-1]['value']/10 - df.iloc[index-6]['value']/10
+            player_price_diff_last_5.append(round(player_price_diff, 2))
+        else:
+            player_price_diff_last_5.append(0)
 
         home_away_current_plus_1.append(int(getFutureValue(df, index, 1, 'was_home', -1)))
         home_away_current_plus_2.append(int(getFutureValue(df, index, 2, 'was_home', -1)))
@@ -258,16 +303,26 @@ def cleanPlayerDataframe(df, fixturesdf, playerTeamID):
             
     df_dict = {
         'points_last_5': points_last_5,
-        'minutes_last_5': minutes_last_5,
+        'minutes_per_game_last_5': minutes_per_game_last_5,
         'goals_last_5': goals_last_5,
         'assists_last_5': assists_last_5,
         'clean_sheets_last_5': clean_sheets_last_5,
         'bonus_points_last_5': bonus_points_last_5,
-        'ict_index': ict_index,
+        'goals_conceded_last_5': goals_conceeded_last_5,
+        'yellow_cards_last_5': yellow_cards_last_5,
+        'red_cards_last_5': red_cards_last_5,
+        'starts_last_5': starts_last_5,
+        'transfers_in_last_5': transfers_in_last_5,
+        'transfers_out_last_5': transfers_out_last_5,
+        # 'influence_last_5': influence_last_5,
+        'ict_index_last_5': ict_index_last_5,
+        'player_price_diff_last_5': player_price_diff_last_5,
+        # 'ict_index': ict_index,
         'player_position': player_position,
         'player_price': player_price,
         'xG_per_90': xG_per_90,
         'xA_per_90': xA_per_90,
+        'xG_conceded_per_90': xGoals_Conceeded_per_90,
         'home_away_current_plus_1': home_away_current_plus_1,
         'home_away_current_plus_2': home_away_current_plus_2,
         'home_away_current_plus_3': home_away_current_plus_3,
@@ -330,13 +385,20 @@ def getFullDataset():
                 continue
     
     final_df = pd.concat(all_data, ignore_index=True)
+
+    #split player position into separate columns
+    final_df['player_position'] = final_df['player_position'].astype(str)
+    final_df = pd.get_dummies(final_df, columns=['player_position'], prefix='position', drop_first=True)
+    dummy_cols = [col for col in final_df.columns if col.startswith('position_')] #now convert the true/false to ints
+    final_df[dummy_cols] = final_df[dummy_cols].astype(int)
+
     final_df.to_csv('fpl_training_data.csv', index=False)
     print(f"Done. {len(final_df)} rows saved")
     return final_df
 
 
 def main():
-    # getFullDataset()
+    getFullDataset()
     pass
 
 
