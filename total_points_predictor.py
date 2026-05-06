@@ -165,6 +165,4 @@ def main():
     # model = FPLModel(input_size=x_train_tensor.shape[1])
     # model.load_state_dict(torch.load('fpl_model.pth'))
 
-for i in range(30):
-    print(f"Running iteration {i+1}")
-    main()
+main()

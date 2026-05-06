@@ -399,7 +399,6 @@ def getFullDataset():
 
 def main():
     getFullDataset()
-    pass
 
 
 main()
