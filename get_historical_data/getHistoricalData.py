@@ -177,22 +177,22 @@ def cleanPlayerDataframe(df, fixturesdf, playerTeamID):
     xGoals_Conceeded_per_90 = []
 
     #home/away in next 7
-    home_away_current_plus_1 = [] #home = 1, away = 0
+    home_away_current = [] #home = 1, away = 0
+    home_away_current_plus_1 = []
     home_away_current_plus_2 = []
     home_away_current_plus_3 = []
     home_away_current_plus_4 = []
     home_away_current_plus_5 = []
     home_away_current_plus_6 = []
-    home_away_current_plus_7 = []
 
     #FDR for next 7
+    fdr_current = []
     fdr_current_plus_1 = []
     fdr_current_plus_2 = []
     fdr_current_plus_3 = []
     fdr_current_plus_4 = []
     fdr_current_plus_5 = []
     fdr_current_plus_6 = []
-    fdr_current_plus_7 = []
 
     total_points_plus_7 = [] #target metric
 
@@ -271,15 +271,15 @@ def cleanPlayerDataframe(df, fixturesdf, playerTeamID):
         else:
             player_price_diff_last_5.append(0)
 
+        home_away_current.append(int(getFutureValue(df, index, 0, 'was_home', -1)))
         home_away_current_plus_1.append(int(getFutureValue(df, index, 1, 'was_home', -1)))
         home_away_current_plus_2.append(int(getFutureValue(df, index, 2, 'was_home', -1)))
         home_away_current_plus_3.append(int(getFutureValue(df, index, 3, 'was_home', -1)))
         home_away_current_plus_4.append(int(getFutureValue(df, index, 4, 'was_home', -1)))
         home_away_current_plus_5.append(int(getFutureValue(df, index, 5, 'was_home', -1)))
         home_away_current_plus_6.append(int(getFutureValue(df, index, 6, 'was_home', -1)))
-        home_away_current_plus_7.append(int(getFutureValue(df, index, 7, 'was_home', -1)))
 
-        for offset in range(1, 8):
+        for offset in range(0, 7):
             future_opponent = getFutureValue(df, index, offset, 'opponent_team', -1)
             future_was_home = getFutureValue(df, index, offset, 'was_home', -1)
             
@@ -288,12 +288,12 @@ def cleanPlayerDataframe(df, fixturesdf, playerTeamID):
             else:
                 fdr = getFDRForPlayerInGameweek(playerTeamID, future_opponent, future_was_home, getFutureValue(df, index, offset, 'round', -1), fixturesdf)
             
-            [fdr_current_plus_1, fdr_current_plus_2, fdr_current_plus_3, 
-            fdr_current_plus_4, fdr_current_plus_5, fdr_current_plus_6, 
-            fdr_current_plus_7][offset - 1].append(fdr)
+            [fdr_current, fdr_current_plus_1, fdr_current_plus_2, 
+            fdr_current_plus_3, fdr_current_plus_4, fdr_current_plus_5, 
+            fdr_current_plus_6][offset].append(fdr)
 
         total_points = 0
-        for i in range(index + 1, index + 8):
+        for i in range(index, index + 7):
             if i >= len(df): #no negative rows
                 break
             ahead_row = df.iloc[i]
@@ -323,20 +323,20 @@ def cleanPlayerDataframe(df, fixturesdf, playerTeamID):
         'xG_per_90': xG_per_90,
         'xA_per_90': xA_per_90,
         'xG_conceded_per_90': xGoals_Conceeded_per_90,
+        'home_away_current': home_away_current,
         'home_away_current_plus_1': home_away_current_plus_1,
         'home_away_current_plus_2': home_away_current_plus_2,
         'home_away_current_plus_3': home_away_current_plus_3,
         'home_away_current_plus_4': home_away_current_plus_4,
         'home_away_current_plus_5': home_away_current_plus_5,
         'home_away_current_plus_6': home_away_current_plus_6,
-        'home_away_current_plus_7': home_away_current_plus_7,
+        'fdr_current': fdr_current,
         'fdr_current_plus_1': fdr_current_plus_1,
         'fdr_current_plus_2': fdr_current_plus_2,
         'fdr_current_plus_3': fdr_current_plus_3,
         'fdr_current_plus_4': fdr_current_plus_4,
         'fdr_current_plus_5': fdr_current_plus_5,
-        'fdr_current_plus_6': fdr_current_plus_6,
-        'fdr_current_plus_7': fdr_current_plus_7 , 
+        'fdr_current_plus_6': fdr_current_plus_6 , 
         'total_points_plus_7': total_points_plus_7 
     }
 
@@ -345,8 +345,8 @@ def cleanPlayerDataframe(df, fixturesdf, playerTeamID):
     ret_df = ret_df.iloc[5:] #drop the first 5 rows since points_last, etc are not available and there would be undercounting
     
     #drop rows where any FDR is -1 (blank gameweeks or end of season)
-    fdr_cols = ['fdr_current_plus_1', 'fdr_current_plus_2', 'fdr_current_plus_3',
-                'fdr_current_plus_4', 'fdr_current_plus_5', 'fdr_current_plus_6', 'fdr_current_plus_7']
+    fdr_cols = ['fdr_current', 'fdr_current_plus_1', 'fdr_current_plus_2',
+                'fdr_current_plus_3', 'fdr_current_plus_4', 'fdr_current_plus_5', 'fdr_current_plus_6']
     ret_df = ret_df[~(ret_df[fdr_cols] == -1).any(axis=1)]
 
     ret_df = ret_df.reset_index(drop=True)
@@ -400,5 +400,5 @@ def getFullDataset():
 def main():
     getFullDataset()
 
-
-main()
+if __name__ == '__main__':
+    main()

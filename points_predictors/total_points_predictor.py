@@ -58,7 +58,8 @@ def main():
 
     #columns we don't want to standardize
     binary_columns = (
-        [f'home_away_current_plus_{i}' for i in range(1, 8)] + 
+        [f'home_away_current_plus_{i}' for i in range(1, 7)] + 
+        ['home_away_current'] + 
         [col for col in x_train.columns if col.startswith('position_')]
     )
 
@@ -165,4 +166,6 @@ def main():
     # model = FPLModel(input_size=x_train_tensor.shape[1])
     # model.load_state_dict(torch.load('fpl_model.pth'))
 
-main()
+if __name__ == '__main__':
+    for i in range(0, 10):
+        main()
