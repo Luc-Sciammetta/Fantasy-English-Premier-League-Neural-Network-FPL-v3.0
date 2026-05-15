@@ -8,6 +8,8 @@ import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
 
+import joblib
+
 #a class that represents the dataset
 class FPLDataset(Dataset):
     def __init__(self, X, y):
@@ -44,7 +46,7 @@ def getDataFromCSV(filename):
 
 
 def main():
-    data = getDataFromCSV('fpl_training_data.csv')
+    data = getDataFromCSV('get_historical_data/fpl_training_data.csv')
 
     x_data = data.drop('total_points_plus_7', axis=1)
     y_data = data['total_points_plus_7']
@@ -135,7 +137,7 @@ def main():
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             epochs_without_improvement = 0
-            torch.save(model.state_dict(), "best_model.pth")
+            torch.save(model.state_dict(), "points_predictors/misc/best_model.pth")
         else:
             epochs_without_improvement += 1
             if epochs_without_improvement >= patience:
@@ -143,8 +145,8 @@ def main():
                 break
 
     #test the model
-    model.load_state_dict(torch.load('best_model.pth'))
-    torch.save(model.state_dict(), "fpl_model.pth")
+    model.load_state_dict(torch.load('points_predictors/misc/best_model.pth'))
+    torch.save(model.state_dict(), "points_predictors/misc/fpl_model.pth")
 
     model.eval()
     with torch.no_grad():
@@ -160,7 +162,8 @@ def main():
     mae = mean_absolute_error(actuals, preds)
     print(f"Mean Absolute Error: {mae:.4f} points")
 
-    torch.save(model.state_dict(), f'{mae:.3f}_best_model.pth')
+    torch.save(model.state_dict(), f'points_predictors/{mae:.4f}_best_model.pth')
+    joblib.dump(scaler, f'points_predictors/{mae:.4f}_scaler.pkl')  #save the scalers for later use
 
     # #load the model
     # model = FPLModel(input_size=x_train_tensor.shape[1])

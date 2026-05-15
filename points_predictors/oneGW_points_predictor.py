@@ -136,7 +136,7 @@ def main():
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             epochs_without_improvement = 0
-            torch.save(model.state_dict(), "best_model.pth")
+            torch.save(model.state_dict(), "points_predictors/misc/best_model.pth")
         else:
             epochs_without_improvement += 1
             if epochs_without_improvement >= patience:
@@ -144,8 +144,8 @@ def main():
                 break
 
     #test the model
-    model.load_state_dict(torch.load('best_model.pth'))
-    torch.save(model.state_dict(), "fpl_model.pth")
+    model.load_state_dict(torch.load('points_predictors/misc/best_model.pth'))
+    torch.save(model.state_dict(), "points_predictors/misc/fpl_model.pth")
 
     model.eval()
     with torch.no_grad():
@@ -161,8 +161,8 @@ def main():
     mae = mean_absolute_error(actuals, preds)
     print(f"Mean Absolute Error: {mae:.4f} points")
 
-    torch.save(model.state_dict(), f'points_predictors/one_gw_{mae:.3f}_best_model.pth')
-    joblib.dump(scaler, f'points_predictors/one_gw_{mae:.3f}_scaler.pkl')  #save the scalers for later use
+    torch.save(model.state_dict(), f'points_predictors/one_gw_{mae:.4f}_best_model.pth')
+    joblib.dump(scaler, f'points_predictors/one_gw_{mae:.4f}_scaler.pkl')  #save the scalers for later use
 
     # #load the model
     # model = FPLModel(input_size=x_train_tensor.shape[1])
