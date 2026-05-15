@@ -1,6 +1,6 @@
 import pulp
 
-from predict_player_points import getTopPlayersForGW, predictPlayerNext7GWPoints
+from predict_player_points import getTopPlayersForGW
 
 def optimizeFullTeam(gw):
     players_next_gw, players = getTopPlayersForGW(gw) 

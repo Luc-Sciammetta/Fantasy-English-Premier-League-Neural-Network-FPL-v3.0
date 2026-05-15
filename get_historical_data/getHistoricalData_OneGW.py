@@ -5,8 +5,8 @@ import pandas as pd
 import ssl
 ssl._create_default_https_context = ssl._create_unverified_context
 
-from get_historical_data.getHistoricalData import encodeName, getPlayerIDsForSeason, getPlayerTeam, getFixturesForSeason, getPlayerStatsForAllGameweeks, getPlayersAndTheirPosition, getFutureValue, getFDRForPlayerInGameweek
-from get_historical_data.getHistoricalData import seasons
+from getHistoricalData import encodeName, getPlayerIDsForSeason, getPlayerTeam, getFixturesForSeason, getPlayerStatsForAllGameweeks, getPlayersAndTheirPosition, getFutureValue, getFDRForPlayerInGameweek
+from getHistoricalData import seasons
 
 def cleanPlayerDataframe(df, fixturesdf, playerTeamID):
     """
@@ -28,6 +28,8 @@ def cleanPlayerDataframe(df, fixturesdf, playerTeamID):
     bonus_points_last_5 = []
     goals_conceeded_last_5 = []
     influence_last_5 = []
+    creativity_last_5 = []
+    threat_last_5 = []
     ict_index_last_5 = []
     player_price_diff_last_5 = [] #holds the difference in the player's price in the last 5 games
     yellow_cards_last_5 = []
@@ -35,6 +37,12 @@ def cleanPlayerDataframe(df, fixturesdf, playerTeamID):
     starts_last_5 = []
     transfers_in_last_5 = []
     transfers_out_last_5 = []
+
+    xG_per_90_last_5 = []
+    xA_per_90_last_5 = []
+    xGoals_Conceeded_per_90_last_5 = []
+
+    saves_last_5 = []
 
     # ict_index = []
     player_position = []
@@ -76,12 +84,20 @@ def cleanPlayerDataframe(df, fixturesdf, playerTeamID):
         bonus = 0
         goals_conceeded = 0
         influence = 0
+        creativity = 0
+        threat = 0
         ict_index = 0
         yellow_cards = 0
         red_cards = 0
         starts = 0
         transfers_in = 0
         transfers_out = 0
+
+        xG_per_90_sum = 0
+        xA_per_90_sum = 0
+        xGoals_Conceeded_per_90_sum = 0
+
+        saves = 0
 
         for i in range(index - 1, index - 6, -1):
             if i < 0: #no negative rows
@@ -96,12 +112,20 @@ def cleanPlayerDataframe(df, fixturesdf, playerTeamID):
             bonus += past_row['bonus']
             goals_conceeded += past_row['goals_conceded']
             influence += past_row['influence']
+            creativity += past_row['creativity']
+            threat += past_row['threat']
             ict_index += round(past_row['ict_index'], 2)
             yellow_cards += past_row['yellow_cards']
             red_cards += past_row['red_cards']
             starts += past_row['starts']
             transfers_in += past_row['transfers_in']
             transfers_out += past_row['transfers_out']
+
+            xG_per_90_sum += past_row['expected_goals']
+            xA_per_90_sum += past_row['expected_assists']
+            xGoals_Conceeded_per_90_sum += past_row['expected_goals_conceded']
+
+            saves += past_row['saves']
 
         games_played = sum(1 for i in range(index-1, index-6, -1) if i >= 0 and df.iloc[i]['minutes'] > 0)
 
@@ -113,12 +137,20 @@ def cleanPlayerDataframe(df, fixturesdf, playerTeamID):
         bonus_points_last_5.append(bonus)
         goals_conceeded_last_5.append(goals_conceeded)
         influence_last_5.append(influence)
+        creativity_last_5.append(creativity)
+        threat_last_5.append(threat)
         ict_index_last_5.append(ict_index)
         yellow_cards_last_5.append(yellow_cards)
         red_cards_last_5.append(red_cards)
         starts_last_5.append(starts)
         transfers_in_last_5.append(transfers_in)
         transfers_out_last_5.append(transfers_out)
+
+        xG_per_90_last_5.append(round(xG_per_90_sum / games_played, 2) if games_played > 0 else 0)
+        xA_per_90_last_5.append(round(xA_per_90_sum / games_played, 2) if games_played > 0 else 0)
+        xGoals_Conceeded_per_90_last_5.append(round(xGoals_Conceeded_per_90_sum / games_played, 2) if games_played > 0 else 0)
+
+        saves_last_5.append(saves)
 
         if index - 6 >= 0:
             #players with a +price_diff means their value increased, players with a -price_diff, means their value decreased
@@ -155,15 +187,24 @@ def cleanPlayerDataframe(df, fixturesdf, playerTeamID):
         'starts_last_5': starts_last_5,
         'transfers_in_last_5': transfers_in_last_5,
         'transfers_out_last_5': transfers_out_last_5,
-        # 'influence_last_5': influence_last_5,
-        'ict_index_last_5': ict_index_last_5,
+        'saves_last_5': saves_last_5,   
+        'influence_last_5': influence_last_5,
+        'creativity_last_5': creativity_last_5,
+        'threat_last_5': threat_last_5,
+        # 'ict_index_last_5': ict_index_last_5,
         'player_price_diff_last_5': player_price_diff_last_5,
         # 'ict_index': ict_index,
         'player_position': player_position,
         'player_price': player_price,
-        'xG_per_90': xG_per_90,
-        'xA_per_90': xA_per_90,
-        'xG_conceded_per_90': xGoals_Conceeded_per_90,
+        
+        # 'xG_per_90': xG_per_90,
+        # 'xA_per_90': xA_per_90,
+        # 'xG_conceded_per_90': xGoals_Conceeded_per_90,
+
+        'xG_per_90_last_5': xG_per_90_last_5,
+        'xA_per_90_last_5': xA_per_90_last_5,
+        'xG_conceded_per_90_last_5': xGoals_Conceeded_per_90_last_5,
+
         'home_away_current': home_away_current,
         'fdr_current': fdr_current,
         'actual_gw_points': actual_gw_points
@@ -230,5 +271,4 @@ def main():
 
 
 if __name__ == '__main__':
-    for i in range(0, 10):
-        main()
+    main()        

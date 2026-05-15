@@ -1,11 +1,13 @@
 import requests
 import pandas as pd
+import numpy as np
 import joblib
 
 import torch
 import torch.nn as nn
 
-from points_predictors.oneGW_points_predictor import FPLModel
+from points_predictors.oneGW_points_predictor import FPLModelOneGW
+from points_predictors.total_points_predictor import FPLModel
 
 import pprint
 
@@ -128,21 +130,29 @@ def getPlayerNextGWFeatures(player_id, current_gw): #note current_gw has "not" h
     bonus_points_last_5 = 0
     goals_conceeded_last_5 = 0
     influence_last_5 = 0
-    ict_index_last_5 = 0
+    creativity_last_5 = 0
+    threat_last_5 = 0
+    # ict_index_last_5 = 0
     yellow_cards_last_5 = 0
     red_cards_last_5 = 0
     starts_last_5 = 0
     transfers_in_last_5 = 0
     transfers_out_last_5 = 0
 
+    saves_last_5 = 0
+
     player_price_diff_last_5 = -1 #holds the difference in the player's price in the last 5 games
 
     player_position = -1
     player_price = -1
 
-    xG_per_90 = -1
-    xA_per_90 = -1
-    xGoals_Conceeded_per_90 = -1
+    # xG_per_90 = -1
+    # xA_per_90 = -1
+    # xGoals_Conceeded_per_90 = -1
+
+    xG_per_90_last_5 = 0
+    xA_per_90_last_5 = 0
+    xGoals_Conceeded_per_90_last_5 = 0
 
     #home/away in next 7
     home_away_current = -1 #home = 1, away = 0
@@ -175,12 +185,21 @@ def getPlayerNextGWFeatures(player_id, current_gw): #note current_gw has "not" h
             bonus_points_last_5 += gw_stats['bonus']
             goals_conceeded_last_5 += gw_stats['goals_conceded']
             influence_last_5 += float(gw_stats['influence'])
-            ict_index_last_5 += float(gw_stats['ict_index'])
+            creativity_last_5 += float(gw_stats['creativity'])
+            threat_last_5 += float(gw_stats['threat'])
+            # ict_index_last_5 += float(gw_stats['ict_index'])
             yellow_cards_last_5 += gw_stats['yellow_cards']
             red_cards_last_5 += gw_stats['red_cards']
             starts_last_5 += gw_stats['starts']
             transfers_in_last_5 += gw_stats['transfers_in']
             transfers_out_last_5 += gw_stats['transfers_out']
+
+            xG_per_90_last_5 += float(gw_stats['expected_goals'])
+            xA_per_90_last_5 += float(gw_stats['expected_assists'])
+            xGoals_Conceeded_per_90_last_5 += float(gw_stats['expected_goals_conceded']) 
+
+            saves_last_5 += gw_stats['saves']
+
 
             if gw_stats['minutes'] > 0:
                 games_played += 1
@@ -222,12 +241,24 @@ def getPlayerNextGWFeatures(player_id, current_gw): #note current_gw has "not" h
         'starts_last_5': starts_last_5,
         'transfers_in_last_5': transfers_in_last_5,
         'transfers_out_last_5': transfers_out_last_5,
-        'ict_index_last_5': round(ict_index_last_5, 2),
+        'saves_last_5': saves_last_5,
+
+        'influence_last_5': influence_last_5,
+        'creativity_last_5': creativity_last_5,
+        'threat_last_5': threat_last_5,
+        # 'ict_index_last_5': round(ict_index_last_5, 2),
         'player_price_diff_last_5': round(player_price_diff_last_5, 2),
         'player_price': player_price,
-        'xG_per_90': round(xG_per_90, 2),
-        'xA_per_90': round(xA_per_90, 2),
-        'xG_conceded_per_90': round(xGoals_Conceeded_per_90, 2),
+
+
+        # 'xG_per_90': round(xG_per_90, 2),
+        # 'xA_per_90': round(xA_per_90, 2),
+        # 'xG_conceded_per_90': round(xGoals_Conceeded_per_90, 2),
+        
+        'xG_per_90_last_5': round(xG_per_90_last_5 / games_played, 2) if games_played > 0 else 0,
+        'xA_per_90_last_5': round(xA_per_90_last_5 / games_played, 2) if games_played > 0 else 0,
+        'xG_conceded_per_90_last_5': round(xGoals_Conceeded_per_90_last_5 / games_played, 2) if games_played > 0 else 0,
+
         'home_away_current': home_away_current,
         'fdr_current': fdr_current,
         'position_1': 1 if player_position == 2 else 0,  # position_1 (DEF)
@@ -248,7 +279,7 @@ def predictPlayerNextGWPoints(player_id, current_gw, model_value):
     """
     torch.manual_seed(42) #set the seed for reproducibility
 
-    model = FPLModel(input_size=23) #number of inputs from getHistoricalData_OneGW.py
+    model = FPLModelOneGW(input_size=26) #number of inputs from getHistoricalData_OneGW.py
     model.load_state_dict(torch.load(f'points_predictors/one_gw_{str(model_value)}_best_model.pth'))
     scaler = joblib.load(f'points_predictors/one_gw_{str(model_value)}_scaler.pkl')
 
@@ -263,9 +294,11 @@ def predictPlayerNextGWPoints(player_id, current_gw, model_value):
     x_input = torch.tensor(x.values, dtype=torch.float32)
 
     with torch.no_grad():
-        predictions = model(x_input)
+        predictions_log = model(x_input)
 
-    return round(predictions.item(), 2) #returns the predicted points for the next gameweek as a float
+    actual_prediction = np.expm1(predictions_log)
+
+    return round(actual_prediction.item(), 2) #returns the predicted points for the next gameweek as a float
 
 
 def getPlayerNext7GWFeatures(player_id, current_gw): #note current_gw has "not" happened yet
@@ -443,7 +476,7 @@ def getTopPlayersForGW(gameweek):
         player_id = player['id']
         print("checking player ", player_id)
         player_name = f"{player['first_name']} {player['second_name']}"
-        next_gw_results.append({"name": player_name, "points": predictPlayerNextGWPoints(player_id, gameweek, 1.5594), 'stuff': player})
+        next_gw_results.append({"name": player_name, "points": predictPlayerNextGWPoints(player_id, gameweek, 4.9505), 'stuff': player})
         next_7_results.append({"name": player_name, "points": predictPlayerNext7GWPoints(player_id, gameweek, 7.208), 'stuff': player})
 
     next_gw_results.sort(key=lambda x: x['points'], reverse=True)
