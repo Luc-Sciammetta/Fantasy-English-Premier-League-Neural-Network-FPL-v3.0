@@ -85,6 +85,6 @@ def optimizeTeamFormation(team):
     return starters, bench
 
 if __name__ == "__main__":
-    gameweek = 20
+    gameweek = 10
     team = optimizeFullTeam(gameweek)
     optimizeTeamFormation(team)

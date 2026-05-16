@@ -11,7 +11,7 @@ from torch.utils.data import Dataset, DataLoader
 import joblib
 
 #a class that represents the dataset
-class FPLDataset(Dataset):
+class ForwardDataset(Dataset):
     def __init__(self, X, y):
         self.X = X #x features
         self.y = y #what we want to predict
@@ -22,7 +22,7 @@ class FPLDataset(Dataset):
     def __getitem__(self, idx):
         return self.X[idx], self.y[idx]
 
-class FPLModelOneGW(nn.Module):
+class ForwardModel(nn.Module):
     def __init__(self, input_size):
         super().__init__()
         self.network = nn.Sequential(
@@ -53,25 +53,25 @@ def getDataFromCSV(filename):
 
 
 def main():
-    data = getDataFromCSV('get_historical_data/oneGW_fpl_training_data.csv')
+    data = getDataFromCSV('get_historical_data/forward/forward_data.csv')
 
-    initial_count = len(data)
-    data = data[data['actual_gw_points'] >= 0]
-    print(f"Removed {initial_count - len(data)} rows with negative points.")
+    # initial_count = len(data)
+    # data = data[data['actual_gw_points'] >= 0]
+    # print(f"Removed {initial_count - len(data)} rows with negative points.")
 
-    #downsample to reduce the number of low scorer rows, since those are the majority of the dataset
-    low_scorers = data[data['actual_gw_points'] <= 2]
-    high_scorers = data[data['actual_gw_points'] > 2]
-    low_scorers_sampled = low_scorers.sample(frac=0.6, random_state=42)
-    data = pd.concat([low_scorers_sampled, high_scorers])
-    print(f"After downsampling low scorers, dataset has {len(data)} rows.")
+    # #downsample to reduce the number of low scorer rows, since those are the majority of the dataset
+    # low_scorers = data[data['actual_gw_points'] <= 2]
+    # high_scorers = data[data['actual_gw_points'] > 2]
+    # low_scorers_sampled = low_scorers.sample(frac=0.6, random_state=42)
+    # data = pd.concat([low_scorers_sampled, high_scorers])
+    # print(f"After downsampling low scorers, dataset has {len(data)} rows.")
 
     x_data = data.drop('actual_gw_points', axis=1)
     y_data = data['actual_gw_points']
 
-    train_ratio = 0.8
+    train_ratio = 0.7
     val_ratio = 0.15
-    test_ratio = 0.05
+    test_ratio = 0.15
 
     x_train, x_temp, y_train, y_temp = train_test_split(x_data, y_data, test_size=(1 - train_ratio), random_state=42)
     x_val, x_test, y_val, y_test = train_test_split(x_temp, y_temp, test_size=(test_ratio / (val_ratio + test_ratio)), random_state=42)
@@ -82,7 +82,6 @@ def main():
 
     #columns we don't want to standardize
     binary_columns = (
-        [col for col in x_train.columns if col.startswith('position_')] +
         ['home_away_current'] 
     )
 
@@ -101,17 +100,16 @@ def main():
     y_test_tensor = torch.tensor(y_test.values, dtype=torch.float32).unsqueeze(1)
 
     #create the individual datasets
-    train_dataset = FPLDataset(x_train_tensor, y_train_tensor)
-    val_dataset = FPLDataset(x_val_tensor, y_val_tensor)
-    test_dataset = FPLDataset(x_test_tensor, y_test_tensor)
+    train_dataset = ForwardDataset(x_train_tensor, y_train_tensor)
+    val_dataset = ForwardDataset(x_val_tensor, y_val_tensor)
+    test_dataset = ForwardDataset(x_test_tensor, y_test_tensor)
 
     #create the loaders that loads the data into the model. 48 'lines' will be inputted at a time, with all lines being randomly shuffled
     train_loader = DataLoader(train_dataset, batch_size=48, shuffle=True)
     val_loader = DataLoader(val_dataset, batch_size=48, shuffle=False)
     test_loader = DataLoader(test_dataset, batch_size=48, shuffle=False)
 
-    model = FPLModelOneGW(input_size=x_train_tensor.shape[1])
-    # loss_function = nn.HuberLoss(delta=1.0)
+    model = ForwardModel(input_size=x_train_tensor.shape[1])
     loss_function = nn.MSELoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
 
@@ -123,11 +121,11 @@ def main():
 
     #for early stopping
     best_val_loss = float('inf')
-    patience = 20
+    patience = 15
     epochs_without_improvement = 0
 
     #for learning rate scheduling
-    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.5, patience=5)
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.5, patience=10)
     for epoch in range(num_epochs):
         #training
         model.train() #sets the model to train mode (dropout active)
@@ -137,17 +135,17 @@ def main():
             predictions = model(x_batch) #produces predictions
 
             #punish the model more for underpredicting high scorers, since thats what we want
-            base_loss = loss_function(predictions, y_batch)
-            weights = torch.where(y_batch >= 1.946, torch.tensor(5.0), torch.tensor(1.0))
-            weighted_loss = (base_loss * weights).mean()
-            weighted_loss.backward()
-            optimizer.step()
-            train_loss += weighted_loss.item()
+            # base_loss = loss_function(predictions, y_batch)
+            # weights = torch.where(y_batch >= 7, torch.tensor(5.0), torch.tensor(1.0))
+            # weighted_loss = (base_loss * weights).mean()
+            # weighted_loss.backward()
+            # optimizer.step()
+            # train_loss += weighted_loss.item()
 
-            # loss = loss_function(predictions, y_batch) 
-            # loss.backward() #backwards pass, computes gradients for every weight
-            # optimizer.step() #uses the gradients to update the weights
-            # train_loss += loss.item() 
+            loss = loss_function(predictions, y_batch) 
+            loss.backward() #backwards pass, computes gradients for every weight
+            optimizer.step() #uses the gradients to update the weights
+            train_loss += loss.item() 
 
         #evaluation on data it's 'never' seen before
         model.eval() #sets the model to evaluation mode (no dropout)
@@ -199,20 +197,19 @@ def main():
     print(f"Mean Absolute Error: {mae:.4f} points")
 
     # Create masks for different scoring tiers
-    low_tier = actuals <= 2
-    mid_tier = (actuals > 2) & (actuals < 6)
-    high_tier = actuals >= 6
+    low_tier = actuals <= 3
+    mid_tier = (actuals > 3) & (actuals < 7)
+    high_tier = actuals >= 7
 
-    print(f"MAE for 0-2 pts: {mean_absolute_error(actuals[low_tier], preds[low_tier]):.4f}")
-    print(f"MAE for 3-5 pts: {mean_absolute_error(actuals[mid_tier], preds[mid_tier]):.4f}")
-    print(f"MAE for 6+ pts:  {mean_absolute_error(actuals[high_tier], preds[high_tier]):.4f}")
+    print(f"MAE for 0-3 pts: {mean_absolute_error(actuals[low_tier], preds[low_tier]):.4f}")
+    print(f"MAE for 4-6 pts: {mean_absolute_error(actuals[mid_tier], preds[mid_tier]):.4f}")
+    print(f"MAE for 7+ pts:  {mean_absolute_error(actuals[high_tier], preds[high_tier]):.4f}")
 
     mae6 = mean_absolute_error(actuals[high_tier], preds[high_tier])
 
-    torch.save(model.state_dict(), f'points_predictors/one_gw_{mae6:.4f}_best_model.pth')
-    joblib.dump(scaler, f'points_predictors/one_gw_{mae6:.4f}_scaler.pkl')  #save the scalers for later use
+    torch.save(model.state_dict(), f'points_predictors/forward/models/{mae6:.4f}_forward.pth')
+    joblib.dump(scaler, f'points_predictors/forward/models/{mae6:.4f}_forward_scaler.pkl')  #save the scalers for later use
 
-    
 
 if __name__ == '__main__':
     for i in range(0, 10):

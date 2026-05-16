@@ -6,7 +6,10 @@ import joblib
 import torch
 import torch.nn as nn
 
-from points_predictors.oneGW_points_predictor import FPLModelOneGW
+from points_predictors.goalkeeper.goalkeeper_points_predictor import GoalkeeperModel
+from points_predictors.defender.defender_points_predictor import DefenderModel
+from points_predictors.midfielder.midfielder_points_predictor import MidfielderModel
+from points_predictors.forward.forward_points_predictor import ForwardModel
 from points_predictors.total_points_predictor import FPLModel
 
 import pprint
@@ -121,7 +124,7 @@ def getPlayerFromID(player_id):
     return player, df_gameweek #returns a tuple of a series, and a dataframe
 
 
-def getPlayerNextGWFeatures(player_id, current_gw): #note current_gw has "not" happened yet
+def getPlayerNextGWFeatures(player_id, player_position, current_gw): #note current_gw has "not" happened yet
     points_last_5 = 0
     minutes_per_game_last_5 = 0
     goals_last_5 = 0
@@ -132,7 +135,6 @@ def getPlayerNextGWFeatures(player_id, current_gw): #note current_gw has "not" h
     influence_last_5 = 0
     creativity_last_5 = 0
     threat_last_5 = 0
-    # ict_index_last_5 = 0
     yellow_cards_last_5 = 0
     red_cards_last_5 = 0
     starts_last_5 = 0
@@ -140,19 +142,19 @@ def getPlayerNextGWFeatures(player_id, current_gw): #note current_gw has "not" h
     transfers_out_last_5 = 0
 
     saves_last_5 = 0
+    saves_per_game_last_5 = 0
 
     player_price_diff_last_5 = -1 #holds the difference in the player's price in the last 5 games
 
-    player_position = -1
     player_price = -1
 
-    # xG_per_90 = -1
-    # xA_per_90 = -1
-    # xGoals_Conceeded_per_90 = -1
+    xG_per_game_last_5 = 0
+    xA_per_game_last_5 = 0
+    xGoals_Conceeded_per_game_last_5 = 0
 
-    xG_per_90_last_5 = 0
-    xA_per_90_last_5 = 0
-    xGoals_Conceeded_per_90_last_5 = 0
+    xG_sum_last_5 = 0
+    xA_sum_last_5 = 0
+    xGoals_Conceeded_sum_last_5 = 0
 
     #home/away in next 7
     home_away_current = -1 #home = 1, away = 0
@@ -162,11 +164,7 @@ def getPlayerNextGWFeatures(player_id, current_gw): #note current_gw has "not" h
 
     player_season_stats, player_gw_stats = getPlayerFromID(player_id)
     
-    player_position = player_season_stats['element_type']
     player_price = player_season_stats['now_cost']/10
-    xG_per_90 = player_season_stats['expected_goals_per_90']
-    xA_per_90 = player_season_stats['expected_assists_per_90']
-    xGoals_Conceeded_per_90 = player_season_stats['expected_goals_conceded_per_90']
 
     before_price = None
     games_played = 0
@@ -187,19 +185,17 @@ def getPlayerNextGWFeatures(player_id, current_gw): #note current_gw has "not" h
             influence_last_5 += float(gw_stats['influence'])
             creativity_last_5 += float(gw_stats['creativity'])
             threat_last_5 += float(gw_stats['threat'])
-            # ict_index_last_5 += float(gw_stats['ict_index'])
             yellow_cards_last_5 += gw_stats['yellow_cards']
             red_cards_last_5 += gw_stats['red_cards']
             starts_last_5 += gw_stats['starts']
             transfers_in_last_5 += gw_stats['transfers_in']
             transfers_out_last_5 += gw_stats['transfers_out']
 
-            xG_per_90_last_5 += float(gw_stats['expected_goals'])
-            xA_per_90_last_5 += float(gw_stats['expected_assists'])
-            xGoals_Conceeded_per_90_last_5 += float(gw_stats['expected_goals_conceded']) 
+            xG_sum_last_5 += float(gw_stats['expected_goals'])
+            xA_sum_last_5 += float(gw_stats['expected_assists'])
+            xGoals_Conceeded_sum_last_5 += float(gw_stats['expected_goals_conceded']) 
 
             saves_last_5 += gw_stats['saves']
-
 
             if gw_stats['minutes'] > 0:
                 games_played += 1
@@ -211,8 +207,18 @@ def getPlayerNextGWFeatures(player_id, current_gw): #note current_gw has "not" h
 
     if games_played > 0:
         minutes_per_game_last_5 = minutes_per_game_last_5 / games_played
+        saves_per_game_last_5 = saves_last_5 / games_played
+
+        xG_per_game_last_5 = xG_sum_last_5 / games_played
+        xA_per_game_last_5 = xA_sum_last_5 / games_played
+        xGoals_Conceeded_per_game_last_5 = xGoals_Conceeded_sum_last_5 / games_played
     else:
         minutes_per_game_last_5 = 0
+        saves_per_game_last_5 = 0
+
+        xG_per_game_last_5 = 0
+        xA_per_game_last_5 = 0
+        xGoals_Conceeded_per_game_last_5 = 0
 
     #get home/away and FDR for next gameweek
     fixtures = getFixturesFromAPI()
@@ -228,66 +234,163 @@ def getPlayerNextGWFeatures(player_id, current_gw): #note current_gw has "not" h
             home_away_current = 0
             fdr_current = next_gw_fuxture['team_h_difficulty']
 
-    return {
-        'points_last_5': points_last_5,
-        'minutes_per_game_last_5': round(minutes_per_game_last_5, 2),
-        'goals_last_5': goals_last_5,
-        'assists_last_5': assists_last_5,
-        'clean_sheets_last_5': clean_sheets_last_5,
-        'bonus_points_last_5': bonus_points_last_5,
-        'goals_conceded_last_5': goals_conceeded_last_5,
-        'yellow_cards_last_5': yellow_cards_last_5,
-        'red_cards_last_5': red_cards_last_5,
-        'starts_last_5': starts_last_5,
-        'transfers_in_last_5': transfers_in_last_5,
-        'transfers_out_last_5': transfers_out_last_5,
-        'saves_last_5': saves_last_5,
+    match player_position:
+        case 1:
+            return {
+                'points_last_5': points_last_5,
+                'minutes_per_game_last_5': minutes_per_game_last_5,
+                'clean_sheets_last_5': clean_sheets_last_5,
+                'bonus_points_last_5': bonus_points_last_5,
+                'goals_conceded_last_5': goals_conceeded_last_5,
+                'yellow_cards_last_5': yellow_cards_last_5,
+                'red_cards_last_5': red_cards_last_5,
+                'starts_last_5': starts_last_5,
+                'transfers_in_last_5': transfers_in_last_5,
+                'transfers_out_last_5': transfers_out_last_5,
+                'saves_last_5': saves_last_5,   
+                'influence_last_5': influence_last_5,
+                'player_price_diff_last_5': player_price_diff_last_5,
+                'player_price': player_price,
+                'saves_per_game_last_5': saves_per_game_last_5,
 
-        'influence_last_5': influence_last_5,
-        'creativity_last_5': creativity_last_5,
-        'threat_last_5': threat_last_5,
-        # 'ict_index_last_5': round(ict_index_last_5, 2),
-        'player_price_diff_last_5': round(player_price_diff_last_5, 2),
-        'player_price': player_price,
+                'xG_conceded_per_game_last_5': xGoals_Conceeded_per_game_last_5,
+                'xG_conceded_sum_last_5': xGoals_Conceeded_sum_last_5,
+
+                'home_away_current': home_away_current,
+                'fdr_current': fdr_current,
+            }
+        case 2:
+            return {
+                'points_last_5': points_last_5,
+                'minutes_per_game_last_5': minutes_per_game_last_5,
+                'goals_last_5': goals_last_5,
+                'assists_last_5': assists_last_5,
+                'clean_sheets_last_5': clean_sheets_last_5,
+                'bonus_points_last_5': bonus_points_last_5,
+                'goals_conceded_last_5': goals_conceeded_last_5,
+                'yellow_cards_last_5': yellow_cards_last_5,
+                'red_cards_last_5': red_cards_last_5,
+                'starts_last_5': starts_last_5,
+                'transfers_in_last_5': transfers_in_last_5,
+                'transfers_out_last_5': transfers_out_last_5,
+                'influence_last_5': influence_last_5,
+                'creativity_last_5': creativity_last_5,
+                'threat_last_5': threat_last_5,
+                'player_price_diff_last_5': player_price_diff_last_5,
+                'player_price': player_price,
+
+                'xG_per_game_last_5': xG_per_game_last_5,
+                'xA_per_game_last_5': xA_per_game_last_5,
+                'xG_conceded_per_game_last_5': xGoals_Conceeded_per_game_last_5,
+                'xG_sum_last_5': xG_sum_last_5,
+                'xA_sum_last_5': xA_sum_last_5,
+                'xGoals_Conceeded_sum_last_5': xGoals_Conceeded_sum_last_5,
+
+                'home_away_current': home_away_current,
+                'fdr_current': fdr_current,
+            }
+        case 3:
+            return {
+                'points_last_5': points_last_5,
+                'minutes_per_game_last_5': minutes_per_game_last_5,
+                'goals_last_5': goals_last_5,
+                'assists_last_5': assists_last_5,
+                'clean_sheets_last_5': clean_sheets_last_5,
+                'bonus_points_last_5': bonus_points_last_5,
+                'goals_conceded_last_5': goals_conceeded_last_5,
+                'yellow_cards_last_5': yellow_cards_last_5,
+                'red_cards_last_5': red_cards_last_5,
+                'starts_last_5': starts_last_5,
+                'transfers_in_last_5': transfers_in_last_5,
+                'transfers_out_last_5': transfers_out_last_5,
+                'influence_last_5': influence_last_5,
+                'creativity_last_5': creativity_last_5,
+                'threat_last_5': threat_last_5,
+                'player_price_diff_last_5': player_price_diff_last_5,
+                'player_price': player_price,
+
+                'xG_per_game_last_5': xG_per_game_last_5,
+                'xA_per_game_last_5': xA_per_game_last_5,
+                'xG_conceded_per_game_last_5': xGoals_Conceeded_per_game_last_5,
+                'xG_sum_last_5': xG_sum_last_5,
+                'xA_sum_last_5': xA_sum_last_5,
+                'xGoals_Conceeded_sum_last_5': xGoals_Conceeded_sum_last_5,
+
+                'home_away_current': home_away_current,
+                'fdr_current': fdr_current,
+            }
+        case 4:
+            return {
+                'points_last_5': points_last_5,
+                'minutes_per_game_last_5': minutes_per_game_last_5,
+                'goals_last_5': goals_last_5,
+                'assists_last_5': assists_last_5,  
+                'bonus_points_last_5': bonus_points_last_5,
+                'yellow_cards_last_5': yellow_cards_last_5,
+                'red_cards_last_5': red_cards_last_5,
+                'starts_last_5': starts_last_5,
+                'transfers_in_last_5': transfers_in_last_5,
+                'transfers_out_last_5': transfers_out_last_5,
+                'influence_last_5': influence_last_5,
+                'creativity_last_5': creativity_last_5,
+                'threat_last_5': threat_last_5,
+                'player_price_diff_last_5': player_price_diff_last_5,
+                'player_price': player_price,
+
+                'xG_per_game_last_5': xG_per_game_last_5,
+                'xA_per_game_last_5': xA_per_game_last_5,
+                'xG_sum_last_5': xG_sum_last_5,
+                'xA_sum_last_5': xA_sum_last_5,
+
+                'home_away_current': home_away_current,
+                'fdr_current': fdr_current,
+            }
+        case _:
+            return
 
 
-        # 'xG_per_90': round(xG_per_90, 2),
-        # 'xA_per_90': round(xA_per_90, 2),
-        # 'xG_conceded_per_90': round(xGoals_Conceeded_per_90, 2),
-        
-        'xG_per_90_last_5': round(xG_per_90_last_5 / games_played, 2) if games_played > 0 else 0,
-        'xA_per_90_last_5': round(xA_per_90_last_5 / games_played, 2) if games_played > 0 else 0,
-        'xG_conceded_per_90_last_5': round(xGoals_Conceeded_per_90_last_5 / games_played, 2) if games_played > 0 else 0,
-
-        'home_away_current': home_away_current,
-        'fdr_current': fdr_current,
-        'position_1': 1 if player_position == 2 else 0,  # position_1 (DEF)
-        'position_2': 1 if player_position == 3 else 0,  # position_2 (MID)
-        'position_3': 1 if player_position == 4 else 0,  # position_3 (FWD)
-    }
-
-
-def predictPlayerNextGWPoints(player_id, current_gw, model_value):
+def predictPlayerNextGWPoints(player_id, current_gw):
     """
     Predicts the points for a player in the next gameweek using the trained model and scaler
     Args:
       player_id: the player's ID in the FPL API
       current_gw: the current gameweek (the gameweek we want to predict for, which has not happened yet)
-      model_value: the value of the model we want to use (the value is the MAE of the model on the validation set, which is used in the filename of the saved model and scaler)
     Returns: 
         The predicted points for the next gameweek as a float
     """
     torch.manual_seed(42) #set the seed for reproducibility
 
-    model = FPLModelOneGW(input_size=26) #number of inputs from getHistoricalData_OneGW.py
-    model.load_state_dict(torch.load(f'points_predictors/one_gw_{str(model_value)}_best_model.pth'))
-    scaler = joblib.load(f'points_predictors/one_gw_{str(model_value)}_scaler.pkl')
-
-    data = getPlayerNextGWFeatures(player_id, current_gw)
+    player_position = getPlayerFromID(player_id)[0]['element_type']
+    match player_position:
+        case 1:
+            print("Using goalkeeper model for player position ", player_position)
+            model = GoalkeeperModel(input_size=19)
+            model.load_state_dict(torch.load(f'points_predictors/goalkeeper/models/5.9910_goalkeeper.pth'))
+            scaler = joblib.load(f'points_predictors/goalkeeper/models/5.9910_goalkeeper_scaler.pkl')
+        case 2:
+            print("Using defender model for player position ", player_position)
+            model = DefenderModel(input_size=25)
+            model.load_state_dict(torch.load(f'points_predictors/defender/models/6.6007_defender.pth'))
+            scaler = joblib.load(f'points_predictors/defender/models/6.6007_defender_scaler.pkl')
+        case 3:
+            print("Using midfielder model for player position ", player_position)
+            model = MidfielderModel(input_size=25)
+            model.load_state_dict(torch.load(f'points_predictors/midfielder/models/6.2691_midfielder.pth'))
+            scaler = joblib.load(f'points_predictors/midfielder/models/6.2691_midfielder_scaler.pkl')
+        case 4:
+            print("Using forward model for player position ", player_position)
+            model = ForwardModel(input_size=21)
+            model.load_state_dict(torch.load(f'points_predictors/forward/models/6.3565_forward.pth'))
+            scaler = joblib.load(f'points_predictors/forward/models/6.3565_forward_scaler.pkl')
+        case _:
+            print(f"Invalid player position {player_position} for player ID {player_id}")
+            return
+    
+    data = getPlayerNextGWFeatures(player_id, player_position, current_gw)
     x = pd.DataFrame([data])
 
     #seperate into binary/numerical columns to scale only numerical columns
-    binary_columns = [col for col in x.columns if col.startswith('position_')] + ['home_away_current']
+    binary_columns = ['home_away_current']
     numerical_columns = [col for col in x.columns if col not in binary_columns]
 
     x[numerical_columns] = scaler.transform(x[numerical_columns])
@@ -476,7 +579,7 @@ def getTopPlayersForGW(gameweek):
         player_id = player['id']
         print("checking player ", player_id)
         player_name = f"{player['first_name']} {player['second_name']}"
-        next_gw_results.append({"name": player_name, "points": predictPlayerNextGWPoints(player_id, gameweek, 4.9562), 'stuff': player})
+        next_gw_results.append({"name": player_name, "points": predictPlayerNextGWPoints(player_id, gameweek), 'stuff': player})
         next_7_results.append({"name": player_name, "points": predictPlayerNext7GWPoints(player_id, gameweek, 7.208), 'stuff': player})
 
     next_gw_results.sort(key=lambda x: x['points'], reverse=True)
