@@ -60,9 +60,9 @@ def main():
     print(f"Removed {initial_count - len(data)} rows with negative points.")
 
     #downsample to reduce the number of low scorer rows, since those are the majority of the dataset
-    low_scorers = data[data['actual_gw_points'] <= 3]
-    high_scorers = data[data['actual_gw_points'] > 3]
-    low_scorers_sampled = low_scorers.sample(frac=0.30, random_state=42)
+    low_scorers = data[data['actual_gw_points'] <= 2]
+    high_scorers = data[data['actual_gw_points'] > 2]
+    low_scorers_sampled = low_scorers.sample(frac=0.6, random_state=42)
     data = pd.concat([low_scorers_sampled, high_scorers])
     print(f"After downsampling low scorers, dataset has {len(data)} rows.")
 
@@ -76,9 +76,9 @@ def main():
     x_train, x_temp, y_train, y_temp = train_test_split(x_data, y_data, test_size=(1 - train_ratio), random_state=42)
     x_val, x_test, y_val, y_test = train_test_split(x_temp, y_temp, test_size=(test_ratio / (val_ratio + test_ratio)), random_state=42)
 
-    #for log transformation?
-    y_train = np.log1p(y_train)
-    y_val = np.log1p(y_val)
+    # #for log transformation?
+    # y_train = np.log1p(y_train)
+    # y_val = np.log1p(y_val)
 
     #columns we don't want to standardize
     binary_columns = (
@@ -123,7 +123,7 @@ def main():
 
     #for early stopping
     best_val_loss = float('inf')
-    patience = 15
+    patience = 20
     epochs_without_improvement = 0
 
     #for learning rate scheduling
@@ -138,7 +138,7 @@ def main():
 
             #punish the model more for underpredicting high scorers, since thats what we want
             base_loss = loss_function(predictions, y_batch)
-            weights = torch.where(y_batch >= 1.946, torch.tensor(20.0), torch.tensor(1.0))
+            weights = torch.where(y_batch >= 1.946, torch.tensor(5.0), torch.tensor(1.0))
             weighted_loss = (base_loss * weights).mean()
             weighted_loss.backward()
             optimizer.step()
@@ -182,29 +182,29 @@ def main():
     with torch.no_grad():
         predictions = model(x_test_tensor)
 
-        #to reduce the log transformation
-        preds_log = predictions.numpy()
-        preds = np.expm1(preds_log)
-        actuals = y_test.values
+        # #to reduce the log transformation
+        # preds_log = predictions.numpy()
+        # preds = np.expm1(preds_log)
+        # actuals = y_test.values
 
-        # test_loss = loss_function(predictions, y_test_tensor)
+        test_loss = loss_function(predictions, y_test_tensor)
 
-        # print(f"Test Loss: {test_loss.item():.4f}")
+        print(f"Test Loss: {test_loss.item():.4f}")
 
-        # preds = predictions.numpy() #convert to numpy array for mae
-        # actuals = y_test_tensor.numpy() 
+        preds = predictions.numpy() #convert to numpy array for mae
+        actuals = y_test_tensor.numpy() 
         
     # Calculate and print the Mean Absolute Error
     mae = mean_absolute_error(actuals, preds)
     print(f"Mean Absolute Error: {mae:.4f} points")
 
     # Create masks for different scoring tiers
-    low_tier = actuals <= 3
-    mid_tier = (actuals > 3) & (actuals < 6)
+    low_tier = actuals <= 2
+    mid_tier = (actuals > 2) & (actuals < 6)
     high_tier = actuals >= 6
 
-    print(f"MAE for 0-3 pts: {mean_absolute_error(actuals[low_tier], preds[low_tier]):.4f}")
-    print(f"MAE for 4-5 pts: {mean_absolute_error(actuals[mid_tier], preds[mid_tier]):.4f}")
+    print(f"MAE for 0-2 pts: {mean_absolute_error(actuals[low_tier], preds[low_tier]):.4f}")
+    print(f"MAE for 3-5 pts: {mean_absolute_error(actuals[mid_tier], preds[mid_tier]):.4f}")
     print(f"MAE for 6+ pts:  {mean_absolute_error(actuals[high_tier], preds[high_tier]):.4f}")
 
     mae6 = mean_absolute_error(actuals[high_tier], preds[high_tier])

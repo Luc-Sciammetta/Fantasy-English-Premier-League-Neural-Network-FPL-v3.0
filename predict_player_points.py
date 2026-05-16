@@ -294,11 +294,11 @@ def predictPlayerNextGWPoints(player_id, current_gw, model_value):
     x_input = torch.tensor(x.values, dtype=torch.float32)
 
     with torch.no_grad():
-        predictions_log = model(x_input)
+        predictions = model(x_input)
 
-    actual_prediction = np.expm1(predictions_log)
+    # actual_prediction = np.expm1(predictions)
 
-    return round(actual_prediction.item(), 2) #returns the predicted points for the next gameweek as a float
+    return round(predictions.item(), 2) #returns the predicted points for the next gameweek as a float
 
 
 def getPlayerNext7GWFeatures(player_id, current_gw): #note current_gw has "not" happened yet
@@ -476,7 +476,7 @@ def getTopPlayersForGW(gameweek):
         player_id = player['id']
         print("checking player ", player_id)
         player_name = f"{player['first_name']} {player['second_name']}"
-        next_gw_results.append({"name": player_name, "points": predictPlayerNextGWPoints(player_id, gameweek, 4.9505), 'stuff': player})
+        next_gw_results.append({"name": player_name, "points": predictPlayerNextGWPoints(player_id, gameweek, 4.9562), 'stuff': player})
         next_7_results.append({"name": player_name, "points": predictPlayerNext7GWPoints(player_id, gameweek, 7.208), 'stuff': player})
 
     next_gw_results.sort(key=lambda x: x['points'], reverse=True)
