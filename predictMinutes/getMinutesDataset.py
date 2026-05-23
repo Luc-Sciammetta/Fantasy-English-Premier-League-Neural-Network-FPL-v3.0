@@ -7,7 +7,7 @@ import urllib.parse
 import ssl
 ssl._create_default_https_context = ssl._create_unverified_context
 
-seasons = [2223, 2324, 2425] #1819, 1920, 2021, 2122, 2526
+seasons = [2223, 2324, 2425, 2526]
 
 def encodeName(name):
     """
@@ -191,7 +191,7 @@ def getFullDataset():
     
     final_df = pd.concat(all_data, ignore_index=True)
 
-    final_df.to_csv('predict2Minutes/minutes_training_data.csv', index=False)
+    final_df.to_csv('predictMinutes/minutes_training_data.csv', index=False)
     print(f"Done. {len(final_df)} rows saved")
     return final_df
 

@@ -2,10 +2,9 @@ import pandas as pd
 import numpy as np
 import xgboost as xgb
 from sklearn.metrics import classification_report, confusion_matrix
-from sklearn.model_selection import train_test_split
 
 #load the data
-df = pd.read_csv('predict2Minutes/minutes_training_data.csv')
+df = pd.read_csv('predictMinutes/minutes_training_data.csv')
 print("loaded ", len(df), "rows")
 
 target = 'did_player_play'
@@ -13,7 +12,7 @@ drop_cols = ['kickoff_time', target] #we dont need these in the features
 
 #split data by season instead of randomly, to prevent leaking future info
 train_df = df[df['season'].isin([2223, 2324])]
-test_df = df[df['season'] == 2425]
+test_df = df[df['season'].isin([2425, 2526])]
 
 X_train = train_df.drop(columns=drop_cols)
 y_train = train_df[target]
@@ -62,7 +61,7 @@ print("\nFeature Importances:")
 print(importance)
 
 #save the model
-model.save_model('predict2Minutes/minutes_model.json')
+model.save_model('predictMinutes/minutes_model.json')
 print("model saved!")
 
 
