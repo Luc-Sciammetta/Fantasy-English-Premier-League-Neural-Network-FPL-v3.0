@@ -96,9 +96,8 @@ def cleanPlayerDataframe(df, season):
     games_played_last_5 = [] #how many games the player has played in the last 5 games
 
     #target metric: 
-    # 0: player did not play in the current gameweek
-    # 1: player played 1-59 minutes in the current gameweek
-    # 2: player played 60-90 minutes in the current gameweek
+    # 0 = played < 60 mins
+    # 1 = played 60+ mins
     did_player_play = []
 
     for index, row in df.iterrows(): #for each gameweek for the player
@@ -131,12 +130,11 @@ def cleanPlayerDataframe(df, season):
         days_till_next_match.append((pd.to_datetime(df.iloc[index+1]['kickoff_time']) - pd.to_datetime(row['kickoff_time'])).days if index < len(df) - 1 else np.nan) #next gw kickoff time - current gw kickoff time
 
         #taregt matric
-        if row['minutes'] == 0:
+        if row['minutes'] < 60:
             did_player_play.append(0)
-        elif row['minutes'] < 60:
+        else:
             did_player_play.append(1)
-        else:            
-            did_player_play.append(2)
+            
 
 
     df_dict = {
@@ -193,7 +191,7 @@ def getFullDataset():
     
     final_df = pd.concat(all_data, ignore_index=True)
 
-    final_df.to_csv('predictMinutes/minutes_training_data.csv', index=False)
+    final_df.to_csv('predict2Minutes/minutes_training_data.csv', index=False)
     print(f"Done. {len(final_df)} rows saved")
     return final_df
 

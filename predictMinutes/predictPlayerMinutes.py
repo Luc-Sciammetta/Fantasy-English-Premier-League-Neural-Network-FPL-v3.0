@@ -5,7 +5,7 @@ from sklearn.metrics import classification_report, confusion_matrix
 from sklearn.model_selection import train_test_split
 
 #load the data
-df = pd.read_csv('predictMinutes/minutes_training_data.csv')
+df = pd.read_csv('predict2Minutes/minutes_training_data.csv')
 print("loaded ", len(df), "rows")
 
 target = 'did_player_play'
@@ -25,13 +25,12 @@ print("Class distribution in train: ", y_train.value_counts(normalize=True))
 
 #create and train the decision tree model(s)
 model = xgb.XGBClassifier(
-    objective = 'multi:softprob', #multiple classes with probabilities
-    num_class = 3,
+    objective = 'binary:logistic', 
     n_estimators = 500, #number of trees
     max_depth = 5, #how deep each tree can go
     learning_rate = 0.05, #how much each tree contributes to the final prediction
     random_state = 42,
-    eval_metric = 'mlogloss',
+    eval_metric = 'logloss',
     early_stopping_rounds = 20 #stops if the model doesnt improve for 20 trees
 )
 
@@ -63,5 +62,8 @@ print("\nFeature Importances:")
 print(importance)
 
 #save the model
-model.save_model('predictMinutes/minutes_model.json')
+model.save_model('predict2Minutes/minutes_model.json')
 print("model saved!")
+
+
+#when predicting, we want the probabilities, so use predict_proba instead of predict.
