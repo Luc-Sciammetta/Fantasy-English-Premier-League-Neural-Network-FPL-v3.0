@@ -11,8 +11,8 @@ target = 'did_player_play'
 drop_cols = ['kickoff_time', target] #we dont need these in the features
 
 #split data by season instead of randomly, to prevent leaking future info
-train_df = df[df['season'].isin([2223, 2324])]
-test_df = df[df['season'].isin([2425, 2526])]
+train_df = df[df['season'].isin([2223, 2324, 2425])]
+test_df = df[df['season'].isin([2526])]
 
 X_train = train_df.drop(columns=drop_cols)
 y_train = train_df[target]

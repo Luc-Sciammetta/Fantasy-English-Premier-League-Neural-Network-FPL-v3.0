@@ -130,10 +130,10 @@ def cleanPlayerDataframe(df, season):
         days_till_next_match.append((pd.to_datetime(df.iloc[index+1]['kickoff_time']) - pd.to_datetime(row['kickoff_time'])).days if index < len(df) - 1 else np.nan) #next gw kickoff time - current gw kickoff time
 
         #taregt matric
-        if row['minutes'] < 60:
-            did_player_play.append(0)
-        else:
+        if row['minutes'] >= 60:
             did_player_play.append(1)
+        else:
+            did_player_play.append(0)
             
 
 
