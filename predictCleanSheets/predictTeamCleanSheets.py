@@ -1,16 +1,16 @@
 import pandas as pd
 import numpy as np
 import xgboost as xgb
-from sklearn.metrics import classification_report, confusion_matrix, mean_absolute_error, mean_squared_error
+from sklearn.metrics import mean_absolute_error, mean_squared_error
 
-df = pd.read_csv('predictGoals/goals_training_data.csv')
+df = pd.read_csv('predictCleanSheets/cleansheet_training_data.csv')
 print("loaded ", len(df), "rows")
 
-target = 'goals_scored'
-drop_cols = ['kickoff_time', 'opponent_team_id', target] 
+target = 'goals_conceded'
+drop_cols = ['season', 'gameweek', 'team', 'opponent_team', target] 
 
-train_df = df[df['season'].isin([2223, 2324])]
-test_df = df[df['season'].isin([2425, 2526])]
+train_df = df[df['season'].isin([2223, 2324, 2526])]
+test_df = df[df['season'].isin([2425])]
 
 X_train = train_df.drop(columns=drop_cols)
 y_train = train_df[target]
@@ -22,9 +22,9 @@ print(f"Target stats:\n{y_train.describe()}")
 
 model = xgb.XGBRegressor(
     objective='count:poisson', #poisson assumes that the target is rare
-    n_estimators = 500,
-    max_depth = 5, 
-    learning_rate = 0.05,
+    n_estimators = 400,
+    max_depth = 4, 
+    learning_rate = 0.01,
     random_state = 42,
     eval_metric='poisson-nloglik',
     early_stopping_rounds = 20,
@@ -43,8 +43,8 @@ print(f"\nMAE: {mean_absolute_error(y_test, y_pred):.4f}")
 print(f"RMSE: {np.sqrt(mean_squared_error(y_test, y_pred)):.4f}")
 print(f"Mean predicted: {y_pred.mean():.4f}")
 print(f"Mean actual: {y_test.mean():.4f}")
-print(f"Total predicted goals: {y_pred.sum():.0f}")
-print(f"Total actual goals: {y_test.sum()}")
+print(f"Total predicted goals conceded: {y_pred.sum():.0f}")
+print(f"Total actual goals conceded: {y_test.sum()}")
 
 # feature importance
 importance = pd.DataFrame({
@@ -54,5 +54,5 @@ importance = pd.DataFrame({
 print("\nFeature importance:")
 print(importance.to_string(index=False))
 
-model.save_model('predictGoals/goals_model.json')
+model.save_model('predictCleanSheets/cleansheet_model.json')
 print("\nModel saved")
