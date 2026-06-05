@@ -641,8 +641,8 @@ def predictPlayerNext7GWPoints(player_id, current_gw, model_value):
     torch.manual_seed(42) #set the seed for reproducibility
 
     model = FPLModel(input_size=35) #number of inputs from getHistoricalData_OneGW.py
-    model.load_state_dict(torch.load(f'points_predictors/{str(model_value)}_best_model.pth'))
-    scaler = joblib.load(f'points_predictors/{str(model_value)}_scaler.pkl')
+    model.load_state_dict(torch.load(f'predictFuturePoints/{str(model_value)}_best_model.pth'))
+    scaler = joblib.load(f'predictFuturePoints/{str(model_value)}_scaler.pkl')
 
     data = getPlayerNext7GWFeatures(player_id, current_gw)
     x = pd.DataFrame([data])
@@ -719,27 +719,35 @@ def getTopPlayersForGameweek(gameweek, season):
     xgc_lookup = buildOpponentXGCLookup(gameweek) #once per gw
 
     player_xp = []
+    player_next_7_points = []
 
     print("calculating xp stats")
     for _, player in full_player_id_list.iterrows():
+        next_7_points = round(predictPlayerNext7GWPoints(player['id'], gameweek, 7.208), 7) #predict the player's points for the next 7 gameweeks
+        player_next_7_points.append([player['first_name'], player['second_name'], next_7_points, player['team'], player['element_type'], player['now_cost']])
+
         stats = calculatePlayerExpectedStats(player['id'], gameweek, season, full_player_id_list, fixtures_df, xgc_lookup)
         if stats is not None:
             xp = round(getExpectedPoints(stats, player['element_type']), 7)
             player_xp.append([player['first_name'], player['second_name'], player['team'], xp, stats])
-            # print(player['first_name'], player['second_name'], ":", xp, "points")
 
     player_xp = sorted(player_xp, key=lambda p: p[3], reverse=True)
+    player_next_7_points = sorted(player_next_7_points, key=lambda p: p[2], reverse=True)
 
     print(f"-------Top Players for GW {gameweek}-------")
     for i in range(0, 20):
         print(f"{i+1}. ", player_xp[i][0], player_xp[i][1], player_xp[i][3])
 
-    return player_xp
+    print(f"\n-------Top Players for Next 7 GWs (from GW {gameweek} to GW {gameweek+6})-------")
+    for i in range(0, 20):
+        print(f"{i+1}. ", player_next_7_points[i][0], player_next_7_points[i][1], player_next_7_points[i][2])
+
+    return player_xp, player_next_7_points
 
 
 def main():
     season = 2526
-    gameweek = 20
+    gameweek = 15
 
     getTopPlayersForGameweek(gameweek, season)
 
