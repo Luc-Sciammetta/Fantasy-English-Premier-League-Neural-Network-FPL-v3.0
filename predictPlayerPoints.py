@@ -552,10 +552,64 @@ def getTopPlayersForGameweek(gameweek, season):
 
 def main():
     season = 2526
-    gameweek = 8
+    gameweek = 20
 
     getTopPlayersForGameweek(gameweek, season)
 
 
 if __name__ == "__main__":
     main()
+
+
+    
+
+
+
+import matplotlib.pyplot as plt
+
+def diagnoseCleanSheetSpread(fixtures_df, gameweek, season):
+    for gw in range(1, 39):
+        preds = {}
+        for team_id in range(1, 21):
+            try:
+                preds[team_id] = predictExpectedGoalsConceded(team_id, fixtures_df, gw, season)
+            except Exception as e:
+                print(f"skip team {team_id}: {e}")
+        s = pd.Series(preds, name='xGC').dropna()
+
+        print(s.sort_values())
+        print(s.describe())            # min, max, mean, std
+        print(f"range: {s.max() - s.min():.3f}, std: {s.std():.3f}")
+
+        s.hist(bins=15)
+        plt.xlabel('predicted expected goals conceded')
+        plt.ylabel('count')
+        plt.title(f'Clean sheet model output spread — GW{gw}')
+        plt.show()
+
+def diagnoseAcrossGameweeks(fixtures_df, season, gw_range):
+    rows = []
+    for gw in gw_range:
+        for team_id in range(1, 21):
+            try:
+                rows.append({'gw': gw, 'team': team_id,
+                             'xGC': predictExpectedGoalsConceded(team_id, fixtures_df, gw, season)})
+            except Exception:
+                continue
+    df = pd.DataFrame(rows).dropna()
+
+    # 1. global spread of every prediction
+    print("ALL PREDICTIONS:")
+    print(df['xGC'].describe())
+    print(f"global std: {df['xGC'].std():.3f}  (real-world ~0.35-0.40)\n")
+
+    # 2. per-team: does a team get a CONSISTENT level, or random noise?
+    per_team = df.groupby('team')['xGC'].agg(['mean', 'std', 'min', 'max'])
+    per_team = per_team.sort_values('mean')
+    print("PER-TEAM (sorted by mean xGC):")
+    print(per_team)
+    print(f"\nspread of team means: {per_team['mean'].std():.3f}")
+    print(f"avg within-team std:  {per_team['std'].mean():.3f}")
+
+    df['xGC'].hist(bins=30)
+    return df, per_team
