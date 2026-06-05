@@ -6,6 +6,13 @@ import pandas as pd
 from predictExpectedGoalsConceded.getCleanSheetDataset import flatten_lags, getLast5Matches, getNextMatch
 from predictGoals.getGoalsDataset import computeOpponentxGCLookup
 
+P_D = { #points distribution
+    "minutes": [2, 2, 2, 2],
+    "goals_scored": [10, 6, 5, 4], 
+    "assists": [3, 3, 3, 3],
+    "clean_sheets": [4, 4, 1, 0],
+}
+
 #---------------------Utility for current data---------------------
 def getFixturesFromAPI():
     """
@@ -476,7 +483,7 @@ def convertExpectedGoalsConcededToCleanSheetProb(expected_goals_conceded):
 
 
 def calculatePlayerExpectedStats(player_id, gameweek, season, full_player_id_list, fixtures_df, xgc_lookup):
-    print(full_player_id_list[full_player_id_list['id'] == player_id][['first_name', 'second_name', 'team']])
+    # print(full_player_id_list[full_player_id_list['id'] == player_id][['first_name', 'second_name', 'team']])
     player_stat = getPlayerStatFromAPI(player_id) #gets the player's stats for each gameweek
 
     #convert player position from id to string
@@ -486,7 +493,10 @@ def calculatePlayerExpectedStats(player_id, gameweek, season, full_player_id_lis
     
     player_team_id = full_player_id_list[full_player_id_list['id'] == player_id].iloc[0]['team'] #gets the player's team id
 
-    opponent_team_id = player_stat[player_stat['round'] == gameweek].iloc[0]['opponent_team']
+    gw_rows = player_stat[player_stat['round'] == gameweek]
+    if gw_rows.empty: #for when there is no gw
+        return None
+    opponent_team_id = gw_rows.iloc[0]['opponent_team']
     opp_xgc = xgc_lookup.get((opponent_team_id, gameweek), np.nan)
 
     minutes_prob, minutes_cls = predictMinutes(player_stat, gameweek, season)
@@ -510,18 +520,41 @@ def calculatePlayerExpectedStats(player_id, gameweek, season, full_player_id_lis
         'clean_sheet_prob': clean_sheet_prob,
     }
 
+def getExpectedPoints(stats, player_position):
+    indexer = player_position - 1 #to get the lookup for the points value
+    return P_D['minutes'][indexer]*stats['minutes_prob'] + P_D['goals_scored'][indexer]*stats['expected_goals'] + P_D['assists'][indexer]*stats['expected_assists'] + P_D['clean_sheets'][indexer]*stats['clean_sheet_prob']
 
-def main():
-    player_id = 16
-    season = 2526
-    gameweek = 8
-
+def getTopPlayersForGameweek(gameweek, season):
     full_player_id_list = getPlayersFromAPI() #gets all the players and their overall stats
     fixtures_df = getFixturesFromAPI() #gets all the fixtures for the season
 
+    print("building xgc lookup")
     xgc_lookup = buildOpponentXGCLookup(gameweek) #once per gw
 
-    stats = calculatePlayerExpectedStats(player_id, gameweek, season, full_player_id_list, fixtures_df, xgc_lookup)
+    player_xp = []
+
+    print("calculating xp stats")
+    for _, player in full_player_id_list.iterrows():
+        stats = calculatePlayerExpectedStats(player['id'], gameweek, season, full_player_id_list, fixtures_df, xgc_lookup)
+        if stats is not None:
+            xp = round(getExpectedPoints(stats, player['element_type']), 7)
+            player_xp.append([player['first_name'], player['second_name'], player['team'], xp, stats])
+            # print(player['first_name'], player['second_name'], ":", xp, "points")
+
+    player_xp = sorted(player_xp, key=lambda p: p[3], reverse=True)
+
+    print(f"-------Top Players for GW {gameweek}-------")
+    for i in range(0, 20):
+        print(f"{i+1}. ", player_xp[i][0], player_xp[i][1], player_xp[i][3])
+
+    return player_xp
+
+
+def main():
+    season = 2526
+    gameweek = 8
+
+    getTopPlayersForGameweek(gameweek, season)
 
 
 if __name__ == "__main__":
