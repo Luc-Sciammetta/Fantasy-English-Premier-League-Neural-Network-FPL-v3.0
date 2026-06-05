@@ -3,7 +3,7 @@ import requests
 import xgboost as xgb
 import pandas as pd
 
-from predictCleanSheets.getCleanSheetDataset import flatten_lags, getLast5Matches, getNextMatch
+from predictExpectedGoalsConceded.getCleanSheetDataset import flatten_lags, getLast5Matches, getNextMatch
 from predictGoals.getGoalsDataset import computeOpponentxGCLookup
 
 #---------------------Utility for current data---------------------
@@ -125,8 +125,8 @@ def predictMinutes(player_stats, gw, season):
     features = getMinutesFeatures(player_stats, gw, season)
     features = features[model.feature_names_in_] #enforces column order
 
-    for _, feature in features.iterrows():
-        print(feature)
+    # for _, feature in features.iterrows():
+    #     print(feature)
     prob = model.predict_proba(features)[0, 1] #predict the probability of playing
     cls = int(model.predict(features)[0]) #hard 1/0 decision
 
@@ -212,10 +212,10 @@ def predictGoals(player_stats, gw, season, opponent_xGC):
     features = getGoalsFeatures(player_stats, gw, season, opponent_xGC)
     features = features[model.feature_names_in_] #enforces column order
 
-    print(model.feature_names_in_)
+    # print(model.feature_names_in_)
 
-    for _, feature in features.iterrows():
-        print(feature)
+    # for _, feature in features.iterrows():
+    #     print(feature)
     expected_goals = float(model.predict(features)[0]) #predict the expected goals for the current gw
 
     return expected_goals
@@ -279,10 +279,10 @@ def predictAssists(player_stats, gw, season, opponent_xGC):
     features = getAssistsFeatures(player_stats, gw, season, opponent_xGC)
     features = features[model.feature_names_in_] #enforces column order
 
-    print(model.feature_names_in_)
+    # print(model.feature_names_in_)
 
-    for _, feature in features.iterrows():
-        print(feature)
+    # for _, feature in features.iterrows():
+    #     print(feature)
     expected_assists = float(model.predict(features)[0]) #predict the expected assists for the current gw
 
     return expected_assists
@@ -339,9 +339,9 @@ def getAssistsFeatures(df, gw, season, opponent_xGC):
 
     return pd.DataFrame([features])
 
-def predictCleanSheets(team_id, fixtures_df, gw, season):
+def predictExpectedGoalsConceded(team_id, fixtures_df, gw, season):
     model = xgb.XGBRegressor()
-    model.load_model('predictCleanSheets/cleansheet_model.json')
+    model.load_model('predictExpectedGoalsConceded/cleansheet_model.json')
 
     team_fixtures = fixtures_df[
         (fixtures_df['event'] == gw) &
@@ -352,27 +352,27 @@ def predictCleanSheets(team_id, fixtures_df, gw, season):
     fixture = team_fixtures.iloc[0]
     
 
-    features = getCleanSheetFeatures(team_id, fixture, fixtures_df, gw, season)
+    features = getExpectedGoalsConcededFeatures(team_id, fixture, fixtures_df, gw, season)
     features = features[model.feature_names_in_] #enforces column order
 
-    print(model.feature_names_in_)
+    # print(model.feature_names_in_)
 
-    for _, feature in features.iterrows():
-        print(feature)
-    expected_cleansheets = float(model.predict(features)[0]) #predict the expected cleansheets for the current gw
+    # for _, feature in features.iterrows():
+    #     print(feature)
+    expected_goals_conceded = float(model.predict(features)[0]) #predict the expected goals conceded for the current gw
 
-    return expected_cleansheets
+    return expected_goals_conceded
 
-def getCleanSheetFeatures(team_id, fixture, fixtures_df, gw, season):
+def getExpectedGoalsConcededFeatures(team_id, fixture, fixtures_df, gw, season):
     """
     Args:
-        team_id (int): The ID of the team for which to predict clean sheets.
-        fixture (pandas.Series): A Series containing the fixture for which to predict clean sheets. Must contain 'team_h', 'team_a', and 'kickoff_time' columns.
+        team_id (int): The ID of the team for which to predict expected goals conceded.
+        fixture (pandas.Series): A Series containing the fixture for which to predict expected goals conceded. Must contain 'team_h', 'team_a', and 'kickoff_time' columns.
         fixtures_df (pandas.DataFrame): A DataFrame containing all fixtures for the season. Must contain 'team_h', 'team_a', 'kickoff_time', 'team_h_score', and 'team_a_score' columns.
-        gw (int): The gameweek for which to predict clean sheets.
-        season (int): The season for which to predict clean sheets.
+        gw (int): The gameweek for which to predict expected goals conceded.
+        season (int): The season for which to predict expected goals conceded.
     Returns:
-        pandas.DataFrame: A DataFrame containing the features for the clean sheet prediction model.
+        pandas.DataFrame: A DataFrame containing the features for the expected goals conceded prediction model.
     """
     player_team = team_id
     is_home = -1
@@ -466,17 +466,18 @@ def getCleanSheetFeatures(team_id, fixture, fixtures_df, gw, season):
 
     return pd.DataFrame([features])
 
-def main():
-    player_id = 16
-    season = 2526
-    gameweek = 12
+def convertExpectedGoalsConcededToCleanSheetProb(expected_goals_conceded):
+    """
+    Converts the expected goals conceded to a clean sheet probability using a Poisson distribution.
+    """
+    # P(X=0) = e^(-lambda) where lambda is the expected goals conceded
+    clean_sheet_prob = np.exp(-expected_goals_conceded)
+    return clean_sheet_prob
 
-    full_player_id_list = getPlayersFromAPI() #gets all the players and their overall stats
-    fixtures_df = getFixturesFromAPI() #gets all the fixtures for the season
 
-    player_stat = getPlayerStatFromAPI(player_id) #gets the player's stats for each gameweek
-    
+def calculatePlayerExpectedStats(player_id, gameweek, season, full_player_id_list, fixtures_df, xgc_lookup):
     print(full_player_id_list[full_player_id_list['id'] == player_id][['first_name', 'second_name', 'team']])
+    player_stat = getPlayerStatFromAPI(player_id) #gets the player's stats for each gameweek
 
     #convert player position from id to string
     pos_map = {1: 'GK', 2: 'DEF', 3: 'MID', 4: 'FWD'}
@@ -485,23 +486,43 @@ def main():
     
     player_team_id = full_player_id_list[full_player_id_list['id'] == player_id].iloc[0]['team'] #gets the player's team id
 
-
-    xgc_lookup = buildOpponentXGCLookup(gameweek) #once per gw
-
     opponent_team_id = player_stat[player_stat['round'] == gameweek].iloc[0]['opponent_team']
     opp_xgc = xgc_lookup.get((opponent_team_id, gameweek), np.nan)
 
     minutes_prob, minutes_cls = predictMinutes(player_stat, gameweek, season)
-    print(minutes_prob, minutes_cls)
 
     expected_goals = predictGoals(player_stat, gameweek, season, opp_xgc)
-    print(f"Expected goals: {expected_goals:.4f}")
 
     expected_assists = predictAssists(player_stat, gameweek, season, opp_xgc)
-    print(f"Expected assists: {expected_assists:.4f}")
 
-    expected_goals_conceded = predictCleanSheets(player_team_id, fixtures_df, gameweek, season)
-    print(f"Expected goals conceded: {expected_goals_conceded:.4f}")
+    expected_goals_conceded = predictExpectedGoalsConceded(player_team_id, fixtures_df, gameweek, season)
+    clean_sheet_prob = convertExpectedGoalsConcededToCleanSheetProb(expected_goals_conceded)
+
+    # diagnoseCleanSheetSpread(fixtures_df, gameweek, season)
+    # df, per_team = diagnoseAcrossGameweeks(fixtures_df, season, range(1, 39))
+
+    return {
+        'minutes_prob': minutes_prob,
+        'minutes_class': minutes_cls,
+        'expected_goals': expected_goals,
+        'expected_assists': expected_assists,
+        'expected_goals_conceded': expected_goals_conceded,
+        'clean_sheet_prob': clean_sheet_prob,
+    }
+
+
+def main():
+    player_id = 16
+    season = 2526
+    gameweek = 8
+
+    full_player_id_list = getPlayersFromAPI() #gets all the players and their overall stats
+    fixtures_df = getFixturesFromAPI() #gets all the fixtures for the season
+
+    xgc_lookup = buildOpponentXGCLookup(gameweek) #once per gw
+
+    stats = calculatePlayerExpectedStats(player_id, gameweek, season, full_player_id_list, fixtures_df, xgc_lookup)
+
 
 if __name__ == "__main__":
     main()

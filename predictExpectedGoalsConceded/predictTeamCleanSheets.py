@@ -3,7 +3,7 @@ import numpy as np
 import xgboost as xgb
 from sklearn.metrics import mean_absolute_error, mean_squared_error
 
-df = pd.read_csv('predictCleanSheets/cleansheet_training_data.csv')
+df = pd.read_csv('predictExpectedGoalsConceded/cleansheet_training_data.csv')
 print("loaded ", len(df), "rows")
 
 target = 'goals_conceded'
@@ -54,5 +54,5 @@ importance = pd.DataFrame({
 print("\nFeature importance:")
 print(importance.to_string(index=False))
 
-model.save_model('predictCleanSheets/cleansheet_model.json')
+model.save_model('predictExpectedGoalsConceded/ts_cleansheet_model.json')
 print("\nModel saved")
