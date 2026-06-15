@@ -86,12 +86,40 @@ def saveTeam(team):
     team_file.write("\n")
     team_file.close()
 
+def determineWhoChanged(old_team, new_team):
+    in_t = []
+    out_t = []
+    for player in old_team:
+        in_team = False
+        for np in new_team:
+            if (player['first_name'], player['second_name']) == (np['first_name'], np['second_name']): #match
+                in_team = True
+        if not in_team:
+            out_t.append(player)
+
+    for player in new_team:
+        in_team = False
+        for np in old_team:
+            if (player['first_name'], player['second_name']) == (np['first_name'], np['second_name']): #match
+                in_team = True
+        if not in_team:
+            in_t.append(player)
+
+    return out_t, in_t
+
+
 def run():
+    print("------------ Welcome to the Fantasy EPL AI ------------\n")
     gameweek = getCurrentGameweek()
-    gameweek = 10
-    players_next_gw, player_next_7_points = getTopPlayersForGameweek(gameweek, SEASON) 
+    gameweek = 11
+    print("Initializing. Doing pre-stuff...")
+    players_next_gw, player_next_7_points = getTopPlayersForGameweek(gameweek, SEASON)
+    print("\nDone. Now Optimizing Team.")
+
+    print("Current Gameweek:", gameweek)
 
     if gameweek == 1:
+        print("Making a new team...")
         team, budget = optimizeFullTeam(players_next_gw, player_next_7_points)
         transfers = 0
     else:
@@ -99,30 +127,41 @@ def run():
         team = getTeam(players_next_gw, player_next_7_points)
         transfers = getTransfers()
 
-        print("Current team:")
-        for player in team:
-            print(player['first_name'], player['second_name'], player['team'], "Expected Points:", player['points_next_gw'])
-            
+        print("\nCurrent Budget:", budget)
+        print("Current Transfers Amount:", transfers)
+        print("\nCurrent Team:")
+        for x in team:
+            print(x['first_name'], x['second_name'])
 
-        team, budget, transfers = determine_transfers(team, budget, transfers, players_next_gw, player_next_7_points, gameweek) #the new team, the remaining budget, the remaining transfers
-        print(f"Remaining budget: {budget}, Remaining transfers: {transfers}")
+        team, budget, transfers, old_team = determine_transfers(team, budget, transfers, players_next_gw, player_next_7_points, gameweek) #the new team, the remaining budget, the remaining transfers
+        out_t, in_t = determineWhoChanged(old_team, team)
 
+        print("\nPlayers Transfered Out:")
+        for x in out_t:
+            print(x['first_name'], x['second_name'])
+        print("\nPlayers Transfered In:")
+        for x in in_t:
+            print(x['first_name'], x['second_name'])
 
     starters, bench, value = optimizeTeamFormation(team)
 
-    print(f"-----Gameweek {gameweek}-----")
+    print(f"\nOptimized Team for Gameweek {gameweek}:")
     print("Starters:")
     for starter in starters:
         print(starter["first_name"], starter["second_name"], starter["team"], "Expected Points:", starter["points_next_gw"])
 
-    print()
-    print("Bench:")
+    print("\nBench:")
     for benched in bench:
         print(benched["first_name"], benched["second_name"], benched["team"], "Expected Points:", benched["points_next_gw"])
     
     saveTeam(team)
     saveBudget(budget)
     saveTransfers(transfers)
+
+    print("Saved Team!")
+    print("\nNew Budget:", budget)
+    print("New Transfers Amount:", transfers)
+    print("Bye!")
 
 
 if __name__ == "__main__":

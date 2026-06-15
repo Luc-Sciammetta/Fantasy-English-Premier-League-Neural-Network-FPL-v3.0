@@ -110,17 +110,17 @@ def determine_transfers(team, budget, free_transfers, next_gw, next_7, gw):
 
     problem.solve(pulp.PULP_CBC_CMD(msg=0))
 
-    print(paid_transfers.varValue)
+    # print(paid_transfers.varValue)
 
     new_team = []
     spent = 0
 
-    print("Status:", pulp.LpStatus[problem.status]) #determines if the optimization was successful
-    print("Total Points:", pulp.value(problem.objective)) #total points of the optimized team
-    print("Selected Players:")
+    # print("Status:", pulp.LpStatus[problem.status]) #determines if the optimization was successful
+    # print("Total Points:", pulp.value(problem.objective)) #total points of the optimized team
+    # print("Selected Players:")
     for i in range(0, len(next_7)):
         if x[i].varValue == 1: #if the player is selected in the team
-            print(next_7[i][0], next_7[i][1], next_7[i][3], "Expected Points:", next_7[i][2])
+            # print(next_7[i][0], next_7[i][1], next_7[i][3], "Expected Points:", next_7[i][2])
             
             spent += next_7[i][5]
 
@@ -145,7 +145,7 @@ def determine_transfers(team, budget, free_transfers, next_gw, next_7, gw):
     transfers_made = sum(1 for i in range(len(next_7)) if x[i].varValue == 1 and owned[i] == 0) #number of new players in the team
     free_left = max(0, free_transfers - transfers_made)
 
-    return new_team, new_budget, free_left
+    return new_team, new_budget, free_left, team
 
 
 if __name__ == "__main__":
