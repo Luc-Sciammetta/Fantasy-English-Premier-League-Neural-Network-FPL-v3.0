@@ -1,6 +1,16 @@
 import pulp
 
+PENALTY = 4 #done so that the optimization will prefer to make free transfers unless its absolutely sure that it will be a good trade
+            #so we double the actual cost of making an extra costly transfer
+
 def optimizeFullTeam(players_next_gw, players):
+    """Optimizes and gets a full team of 15 players based on player predicted points for the next 7 gameweeks
+    Args:
+        players_next_gw: list of tuples (first_name, second_name, predicted_points_next_gw) for all players
+        players: list of tuples (first_name, second_name, predicted_points_next_7_gw, team, element_type, cost, id) for all players
+    Returns:
+        team: list of dicts with player info for the optimized team
+    """
     problem = pulp.LpProblem("Fantasy Team Optimization", pulp.LpMaximize)
 
     #variables made (in a dict) for each possible player. They can be 0 or 1, where 1 means they made the team and 0 means they didnt
@@ -53,6 +63,14 @@ def optimizeFullTeam(players_next_gw, players):
     return team, (1000 - spent) #return the team and the remaining budget
 
 def optimizeTeamFormation(team):
+    """Optimizes the team formation for the next gameweek based on predicted points for the next gameweek.
+    Args:
+        team: list of dicts with player info for the current team
+    Returns:
+        starters: list of dicts with player info for the optimized starting 11
+        bench: list of dicts with player info for the optimized bench
+        total_points: total predicted points for the starting 11 for the next gameweek
+    """
     problem = pulp.LpProblem("Fantasy Formation Optimization", pulp.LpMaximize)
 
     x = pulp.LpVariable.dict("player", range(0, len(team)), 0, 1, cat=pulp.LpInteger)
@@ -79,9 +97,22 @@ def optimizeTeamFormation(team):
         else:
             bench.append(team[i])
     
-    return starters, bench, pulp.value(problem.objective)
+    return sorted(starters, key=lambda x: x['points_next_gw'], reverse=True), sorted(bench, key=lambda x: x['points_next_gw'], reverse=True), pulp.value(problem.objective)
 
-def determine_transfers(team, budget, free_transfers, next_gw, next_7, gw):
+def determine_transfers(team, budget, free_transfers, next_gw, next_7):
+    """Determines the optimal transfers to make for the next gameweek based on player predicted points for the next 7 gameweeks and the next gameweek.
+    Args:
+        team: list of dicts with player info for the current team
+        budget: current budget available for transfers
+        free_transfers: number of free transfers available
+        next_gw: list of tuples (first_name, second_name, predicted_points_next_gw) for all players
+        next_7: list of tuples (first_name, second_name, predicted_points_next_7_gw, team, element_type, cost, id) for all players
+    Returns:
+        new_team: list of dicts with player info for the new team after transfers
+        new_budget: remaining budget after transfers
+        free_left: remaining free transfers after transfers
+        old_team: list of dicts with player info for the old team (before transfers)
+    """
     problem = pulp.LpProblem("Fantasy Team Transfer Optimization", pulp.LpMaximize)
 
     x = pulp.LpVariable.dict("player", range(0, len(next_7)), 0, 1, cat=pulp.LpInteger)
@@ -92,7 +123,7 @@ def determine_transfers(team, budget, free_transfers, next_gw, next_7, gw):
     paid_transfers = pulp.LpVariable("paid_transfers", lowBound=0)
     problem += paid_transfers >= (15 - pulp.lpSum(owned[i] * x[i] for i in range(len(next_7)))) - free_transfers #number of paid transfers must be at least the number of new players in the team minus the free transfers available
 
-    problem += (pulp.lpSum(next_7[i][2] * x[i] for i in range(len(next_7))) - 4 * paid_transfers) #maximize points of new team minus 4 points for each paid transfer
+    problem += (pulp.lpSum(next_7[i][2] * x[i] for i in range(len(next_7))) - (4+PENALTY) * paid_transfers) #maximize points of new team minus 4 points for each paid transfer
 
     squad_value = sum(next_7[i][5] for i in range(len(next_7)) if owned[i]) #value of the players in the new team that are already owned
     total_funds = budget + squad_value 

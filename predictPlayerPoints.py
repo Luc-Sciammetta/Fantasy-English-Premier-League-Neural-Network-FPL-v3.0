@@ -5,6 +5,7 @@ import pandas as pd
 import torch
 import torch.nn as nn
 import joblib
+import time
 
 from predictExpectedGoalsConceded.getCleanSheetDataset import flatten_lags, getLast5Matches, getNextMatch
 from predictGoals.getGoalsDataset import computeOpponentxGCLookup
@@ -18,6 +19,8 @@ P_D = { #points distribution
     "assists": [3, 3, 3, 3],
     "clean_sheets": [4, 4, 1, 0],
 }
+
+_player_stat_cache = {}
 
 #---------------------Utility for current data---------------------
 def getFixturesFromAPI():
@@ -48,6 +51,9 @@ def getPlayerStatFromAPI(player_id):
     """
     Gets the data from a specific player for each gameweek and returns it as a dataframe
     """
+    if player_id in _player_stat_cache:
+        return _player_stat_cache[player_id]
+
     url = 'https://fantasy.premierleague.com/api/'
     P = requests.get(url+f'element-summary/{player_id}/').json()
 
@@ -66,6 +72,8 @@ def getPlayerStatFromAPI(player_id):
     numeric_cols = ['expected_goals', 'expected_assists', 'expected_goal_involvements',
                     'expected_goals_conceded', 'influence', 'creativity', 'threat', 'ict_index']
     df[numeric_cols] = df[numeric_cols].apply(pd.to_numeric, errors='coerce')
+
+    _player_stat_cache[player_id] = df
 
     return df
 
@@ -146,6 +154,7 @@ def getPlayerFromID(player_id):
 
 #----------------------Prediction functions---------------------
 def predictMinutes(player_stats, gw, season):
+    """Predicts the probability that a player will play at least 60 minutes in a game"""
     model = xgb.XGBClassifier()
     model.load_model('predictMinutes/minutes_model.json')
 
@@ -160,6 +169,7 @@ def predictMinutes(player_stats, gw, season):
     return prob, cls
 
 def getMinutesFeatures(df, gw, season):
+    """Gets the features for the minutes prediction model for a given player and gameweek."""
     position_dict = {"GK": 1, "DEF": 2, "MID": 3, "FWD": 4}
 
     started_last_match = -1 #whether the player started in the last match (1 gw behind)
@@ -233,6 +243,7 @@ def getMinutesFeatures(df, gw, season):
 
 
 def predictGoals(player_stats, gw, season, opponent_xGC):
+    """Predicts the number of goals a player will score in a game"""
     model = xgb.XGBRegressor()
     model.load_model('predictGoals/goals_model.json')
 
@@ -249,6 +260,7 @@ def predictGoals(player_stats, gw, season, opponent_xGC):
 
 
 def getGoalsFeatures(df, gw, season, opponent_xGC):
+    """Gets the features for the goals prediction model for a given player and gameweek."""
     position_dict = {"GK": 1, "DEF": 2, "MID": 3, "FWD": 4}
     player_position = -1
 
@@ -300,6 +312,7 @@ def getGoalsFeatures(df, gw, season, opponent_xGC):
     return pd.DataFrame([features])
 
 def predictAssists(player_stats, gw, season, opponent_xGC):
+    """Predicts the number of assists a player will score in a game"""
     model = xgb.XGBRegressor()
     model.load_model('predictAssists/assists_model.json')
 
@@ -316,6 +329,7 @@ def predictAssists(player_stats, gw, season, opponent_xGC):
 
 
 def getAssistsFeatures(df, gw, season, opponent_xGC):
+    """Gets the features for the assists prediction model for a given player and gameweek."""
     position_dict = {"GK": 1, "DEF": 2, "MID": 3, "FWD": 4}
     player_position = -1
 
@@ -367,6 +381,7 @@ def getAssistsFeatures(df, gw, season, opponent_xGC):
     return pd.DataFrame([features])
 
 def predictExpectedGoalsConceded(team_id, fixtures_df, gw, season):
+    """Predicts the number of goals a team will concede in a game"""
     model = xgb.XGBRegressor()
     model.load_model('predictExpectedGoalsConceded/cleansheet_model.json')
 
@@ -494,6 +509,7 @@ def getExpectedGoalsConcededFeatures(team_id, fixture, fixtures_df, gw, season):
     return pd.DataFrame([features])
 
 def getPlayerNext7GWFeatures(player_id, current_gw): #note current_gw has "not" happened yet
+    """Gets the features for a player's next 7 gameweeks, including their stats from the last 5 gameweeks, their position and price, and the home/away and FDR for their next 7 fixtures."""
     points_last_5 = 0
     minutes_per_game_last_5 = 0
     goals_last_5 = 0
@@ -670,8 +686,26 @@ def convertExpectedGoalsConcededToCleanSheetProb(expected_goals_conceded):
 
 
 def calculatePlayerExpectedStats(player_id, gameweek, season, full_player_id_list, fixtures_df, xgc_lookup):
+    """Calculates the expected stats for a player in a given gameweek using the trained models
+    Args:
+        player_id: the player's ID in the FPL API
+        gameweek: the gameweek we want to predict for (the gameweek has not happened yet)
+        season: the season we want to predict for
+        full_player_id_list: a dataframe containing all the players and their overall stats for the season, obtained from getPlayersFromAPI()
+        fixtures_df: a dataframe containing all the fixtures for the season, obtained from getFixturesFromAPI()
+        xgc_lookup: a dictionary mapping (team_id, gameweek) to xGC-per-game, obtained from buildOpponentXGCLookup()
+    Returns:
+        A dictionary containing the expected stats for the player in the given gameweek, including:
+        - minutes_prob: the probability that the player will play at least 60 minutes in the game
+        - minutes_class: the predicted class for minutes played (1 if the player is predicted to play at least 60 minutes, 0 otherwise)
+        - expected_goals: the expected number of goals the player will score in the game
+        - expected_assists: the expected number of assists the player will score in the game
+        - expected_goals_conceded: the expected number of goals the player's team will concede in the game
+        - clean_sheet_prob: the probability that the player's team will keep a clean sheet in the game
+    """
     # print(full_player_id_list[full_player_id_list['id'] == player_id][['first_name', 'second_name', 'team']])
     player_stat = getPlayerStatFromAPI(player_id) #gets the player's stats for each gameweek
+    time.sleep(0.1) #to avoid hitting the API rate limit
 
     #convert player position from id to string
     pos_map = {1: 'GK', 2: 'DEF', 3: 'MID', 4: 'FWD'}
@@ -708,20 +742,22 @@ def calculatePlayerExpectedStats(player_id, gameweek, season, full_player_id_lis
     }
 
 def getExpectedPoints(stats, player_position):
+    """Calculates the expected points for a player in a given gameweek using the predicted stats and the average points per stat for the player's position."""
     indexer = player_position - 1 #to get the lookup for the points value
     return P_D['minutes'][indexer]*stats['minutes_prob'] + P_D['goals_scored'][indexer]*stats['expected_goals'] + P_D['assists'][indexer]*stats['expected_assists'] + P_D['clean_sheets'][indexer]*stats['clean_sheet_prob']
 
 def getTopPlayersForGameweek(gameweek, season):
+    """Gets the top players for a given gameweek based on their expected points, as well as their predicted points for the next 7 gameweeks."""
     full_player_id_list = getPlayersFromAPI() #gets all the players and their overall stats
     fixtures_df = getFixturesFromAPI() #gets all the fixtures for the season
 
-    print("building xgc lookup")
+    # print("building xgc lookup")
     xgc_lookup = buildOpponentXGCLookup(gameweek) #once per gw
 
     player_xp = []
     player_next_7_points = []
 
-    print("calculating xp stats")
+    # print("calculating xp stats")
     for _, player in full_player_id_list.iterrows():
         next_7_points = round(predictPlayerNext7GWPoints(player['id'], gameweek, 7.208), 7) #predict the player's points for the next 7 gameweeks
         player_next_7_points.append([player['first_name'], player['second_name'], next_7_points, player['team'], player['element_type'], player['now_cost'], player['id']])
@@ -734,13 +770,13 @@ def getTopPlayersForGameweek(gameweek, season):
     player_xp = sorted(player_xp, key=lambda p: p[3], reverse=True)
     player_next_7_points = sorted(player_next_7_points, key=lambda p: p[2], reverse=True)
 
-    print(f"-------Top Players for GW {gameweek}-------")
-    for i in range(0, 20):
-        print(f"{i+1}. ", player_xp[i][0], player_xp[i][1], player_xp[i][3])
+    # print(f"-------Top Players for GW {gameweek}-------")
+    # for i in range(0, 20):
+    #     print(f"{i+1}. ", player_xp[i][0], player_xp[i][1], player_xp[i][3])
 
-    print(f"\n-------Top Players for Next 7 GWs (from GW {gameweek} to GW {gameweek+6})-------")
-    for i in range(0, 20):
-        print(f"{i+1}. ", player_next_7_points[i][0], player_next_7_points[i][1], player_next_7_points[i][2])
+    # print(f"\n-------Top Players for Next 7 GWs (from GW {gameweek} to GW {gameweek+6})-------")
+    # for i in range(0, 20):
+    #     print(f"{i+1}. ", player_next_7_points[i][0], player_next_7_points[i][1], player_next_7_points[i][2])
 
     return player_xp, player_next_7_points
 
@@ -755,11 +791,7 @@ def main():
 if __name__ == "__main__":
     main()
 
-
-    
-
-
-
+#------ Clean Sheets Plots ------
 import matplotlib.pyplot as plt
 
 def diagnoseCleanSheetSpread(fixtures_df, gameweek, season):
