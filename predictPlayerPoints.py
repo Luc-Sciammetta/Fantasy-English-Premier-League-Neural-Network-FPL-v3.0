@@ -724,7 +724,7 @@ def getTopPlayersForGameweek(gameweek, season):
     print("calculating xp stats")
     for _, player in full_player_id_list.iterrows():
         next_7_points = round(predictPlayerNext7GWPoints(player['id'], gameweek, 7.208), 7) #predict the player's points for the next 7 gameweeks
-        player_next_7_points.append([player['first_name'], player['second_name'], next_7_points, player['team'], player['element_type'], player['now_cost']])
+        player_next_7_points.append([player['first_name'], player['second_name'], next_7_points, player['team'], player['element_type'], player['now_cost'], player['id']])
 
         stats = calculatePlayerExpectedStats(player['id'], gameweek, season, full_player_id_list, fixtures_df, xgc_lookup)
         if stats is not None:
