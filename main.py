@@ -1,3 +1,5 @@
+import os
+
 import requests
 import pandas as pd
 import pprint
@@ -7,7 +9,8 @@ import matplotlib.pyplot as plt
 from optimize_team import optimizeFullTeam, optimizeTeamFormation, determine_transfers
 from predictPlayerPoints import getTopPlayersForGameweek
 
-SEASON = 2526
+SEASON = os.environ.get('SEASON', 2526)  # Default to 2526 if not set
+TRANSFER_POINTS_THRESHOLD = 15 #if the transfers that we make improve the team by x points in the next 7 gameweeks
 
 def plot_list(lst, title, xlabel, ylabel):
     plt.plot(lst)
@@ -104,6 +107,12 @@ def saveTeam(team):
     team_file.write("\n")
     team_file.close()
 
+def getTeamExpected7GWPoints(team):
+    total_points = 0
+    for player in team:
+        total_points += player['points']
+    return total_points
+
 def determineWhoChanged(old_team, new_team):
     """Determines which players were transferred in and out by comparing the old team and the new team.
     Args:
@@ -161,7 +170,16 @@ def run(gw):
         #     print(x['first_name'], x['second_name'])
 
         team, budget, transfers, old_team = determine_transfers(team, budget, transfers, players_next_gw, player_next_7_points) #the new team, the remaining budget, the remaining transfers
-        out_t, in_t = determineWhoChanged(old_team, team)
+        old_team_value = getTeamExpected7GWPoints(old_team)
+        new_team_value = getTeamExpected7GWPoints(team)
+        if new_team_value - old_team_value > TRANSFER_POINTS_THRESHOLD: #if the transfers that we make improve the team by x points in the next 7 gameweeks
+            #make the changes
+            print("\nTransfers will improve the team by:", new_team_value - old_team_value, "points")
+            out_t, in_t = determineWhoChanged(old_team, team)
+        else: #revert the team back and bank the free transfer for next week
+            print("\nNot worth making transfers, banking them for next week.")
+            team = old_team
+            transfers = getTransfers() #we want the amount of transfers we have available this week
 
         print("\nPlayers Transfered Out:")
         for x in out_t:
@@ -171,6 +189,7 @@ def run(gw):
             print(x['first_name'], x['second_name'])
 
     starters, bench, value = optimizeTeamFormation(team)
+    print("optimized team value:", value)
 
     # print(f"\nOptimized Team for Gameweek {gameweek}:")
     # print("Starters:")
@@ -185,15 +204,15 @@ def run(gw):
     saveBudget(budget)
     saveTransfers(transfers)
 
-    actual_points = calculateActualPoints(starters, gameweek, SEASON)
-    return actual_points
-
     # print("Saved Team!")
     # print("\nNew Budget:", budget)
     # print("New Transfers Amount:", transfers)
     # print("Bye!")
 
-def calculateActualPoints(starters, gameweek, season=SEASON):
+    actual_points = calculateActualPoints(starters, bench, gameweek, SEASON)
+    return actual_points
+
+def calculateActualPoints(starters, bench, gameweek, season=SEASON):
     """Sums the actual points the starting XI scored in `gameweek`, applying
     captain (top predicted) and vice-captain (2nd predicted) logic."""
     live = requests.get(
@@ -207,53 +226,33 @@ def calculateActualPoints(starters, gameweek, season=SEASON):
     captain = ranked[0]
     vice    = ranked[1]
 
-    total = sum(points_by_id.get(p['id'], 0) for p in starters)
+    total = 0
+    print(f"\nSTARTERS breakdown (predicted -> actual -> next_7):")
+    for p in starters:
+        actual = points_by_id.get(p['id'], 0)
+        total += actual
+        print(f"  {p['first_name']} {p['second_name']:<25} "
+              f"pred {p['points_next_gw']:>5.2f} -> actual {actual} -> next_7 {p['points']:.2f}")
+        
+    print(f"\nBENCH breakdown (predicted -> actual -> next_7):")
+    for p in bench:
+        actual = points_by_id.get(p['id'], 0)
+        total += actual
+        print(f"  {p['first_name']} {p['second_name']:<25} "
+              f"pred {p['points_next_gw']:>5.2f} -> actual {actual} -> next_7 {p['points']:.2f}")
 
     # captain doubles; if captain played 0 minutes, the armband falls to the VC
     if minutes_by_id.get(captain['id'], 0) > 0:
-        total += points_by_id.get(captain['id'], 0)
+        cap_used = captain
     else:
-        total += points_by_id.get(vice['id'], 0)
+        cap_used = vice
+    total += points_by_id.get(cap_used['id'], 0)
 
-    print(f"\nCaptain: {captain['first_name']} {captain['second_name']}, "
-          f"VC: {vice['first_name']} {vice['second_name']}")
+    print(f"Captain: {captain['first_name']} {captain['second_name']}, "
+          f"VC: {vice['first_name']} {vice['second_name']} "
+          f"(double applied to {cap_used['first_name']} {cap_used['second_name']})")
     print(f"Actual points for GW{gameweek}: {total}")
     return total
-
-# def calculateActualPoints(starters, gameweek, season=SEASON):
-#     """Sums the actual points the starting XI scored in `gameweek`, applying
-#     captain (top predicted) and vice-captain (2nd predicted) logic."""
-#     live = requests.get(
-#         f"https://fantasy.premierleague.com/api/event/{gameweek}/live/"
-#     ).json()
-#     points_by_id  = {e['id']: e['stats']['total_points'] for e in live['elements']}
-#     minutes_by_id = {e['id']: e['stats']['minutes']      for e in live['elements']}
-
-#     # captain = highest predicted in the XI, vice = second highest
-#     ranked  = sorted(starters, key=lambda p: p['points_next_gw'], reverse=True)
-#     captain = ranked[0]
-#     vice    = ranked[1]
-
-#     total = 0
-#     print(f"\nGW{gameweek} starter breakdown (predicted -> actual):")
-#     for p in starters:
-#         actual = points_by_id.get(p['id'], 0)
-#         total += actual
-#         print(f"  {p['first_name']} {p['second_name']:<25} "
-#               f"pred {p['points_next_gw']:>5.2f} -> actual {actual}")
-
-#     # captain doubles; if captain played 0 minutes, the armband falls to the VC
-#     if minutes_by_id.get(captain['id'], 0) > 0:
-#         cap_used = captain
-#     else:
-#         cap_used = vice
-#     total += points_by_id.get(cap_used['id'], 0)
-
-#     print(f"Captain: {captain['first_name']} {captain['second_name']}, "
-#           f"VC: {vice['first_name']} {vice['second_name']} "
-#           f"(double applied to {cap_used['first_name']} {cap_used['second_name']})")
-#     print(f"Actual points for GW{gameweek}: {total}")
-#     return total
 
 
 if __name__ == "__main__":

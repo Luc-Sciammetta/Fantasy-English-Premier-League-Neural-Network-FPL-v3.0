@@ -1,5 +1,5 @@
 import os
-import json
+import pickle
 import numpy as np
 import requests
 import xgboost as xgb
@@ -14,6 +14,7 @@ from predictGoals.getGoalsDataset import computeOpponentxGCLookup
 
 from predictFuturePoints.total_points_predictor import FPLModel
 
+SEASON = os.environ.get('SEASON', 2526)  # Default to 2526 if not set
 
 P_D = { #points distribution
     "minutes": [2, 2, 2, 2],
@@ -23,6 +24,18 @@ P_D = { #points distribution
 }
 
 _player_stat_cache = {}
+
+minutes_model = xgb.XGBClassifier()
+minutes_model.load_model('predictMinutes/minutes_model.json')
+
+goals_model = xgb.XGBRegressor()
+goals_model.load_model('predictGoals/goals_model.json')
+
+assists_model = xgb.XGBRegressor()
+assists_model.load_model('predictAssists/assists_model.json')
+
+cleansheet_model = xgb.XGBRegressor()
+cleansheet_model.load_model('predictExpectedGoalsConceded/cleansheet_model.json')
 
 #---------------------Utility for current data---------------------
 def getFixturesFromAPI():
@@ -157,16 +170,13 @@ def getPlayerFromID(player_id):
 #----------------------Prediction functions---------------------
 def predictMinutes(player_stats, gw, season):
     """Predicts the probability that a player will play at least 60 minutes in a game"""
-    model = xgb.XGBClassifier()
-    model.load_model('predictMinutes/minutes_model.json')
-
     features = getMinutesFeatures(player_stats, gw, season)
-    features = features[model.feature_names_in_] #enforces column order
+    features = features[minutes_model.feature_names_in_] #enforces column order
 
     # for _, feature in features.iterrows():
     #     print(feature)
-    prob = model.predict_proba(features)[0, 1] #predict the probability of playing
-    cls = int(model.predict(features)[0]) #hard 1/0 decision
+    prob = minutes_model.predict_proba(features)[0, 1] #predict the probability of playing
+    cls = int(minutes_model.predict(features)[0]) #hard 1/0 decision
 
     return prob, cls
 
@@ -246,17 +256,14 @@ def getMinutesFeatures(df, gw, season):
 
 def predictGoals(player_stats, gw, season, opponent_xGC):
     """Predicts the number of goals a player will score in a game"""
-    model = xgb.XGBRegressor()
-    model.load_model('predictGoals/goals_model.json')
-
     features = getGoalsFeatures(player_stats, gw, season, opponent_xGC)
-    features = features[model.feature_names_in_] #enforces column order
+    features = features[goals_model.feature_names_in_] #enforces column order
 
-    # print(model.feature_names_in_)
+    # print(goals_model.feature_names_in_)
 
     # for _, feature in features.iterrows():
     #     print(feature)
-    expected_goals = float(model.predict(features)[0]) #predict the expected goals for the current gw
+    expected_goals = float(goals_model.predict(features)[0]) #predict the expected goals for the current gw
 
     return expected_goals
 
@@ -315,17 +322,14 @@ def getGoalsFeatures(df, gw, season, opponent_xGC):
 
 def predictAssists(player_stats, gw, season, opponent_xGC):
     """Predicts the number of assists a player will score in a game"""
-    model = xgb.XGBRegressor()
-    model.load_model('predictAssists/assists_model.json')
-
     features = getAssistsFeatures(player_stats, gw, season, opponent_xGC)
-    features = features[model.feature_names_in_] #enforces column order
+    features = features[assists_model.feature_names_in_] #enforces column order
 
-    # print(model.feature_names_in_)
+    # print(assists_model.feature_names_in_)
 
     # for _, feature in features.iterrows():
     #     print(feature)
-    expected_assists = float(model.predict(features)[0]) #predict the expected assists for the current gw
+    expected_assists = float(assists_model.predict(features)[0]) #predict the expected assists for the current gw
 
     return expected_assists
 
@@ -384,9 +388,6 @@ def getAssistsFeatures(df, gw, season, opponent_xGC):
 
 def predictExpectedGoalsConceded(team_id, fixtures_df, gw, season):
     """Predicts the number of goals a team will concede in a game"""
-    model = xgb.XGBRegressor()
-    model.load_model('predictExpectedGoalsConceded/cleansheet_model.json')
-
     team_fixtures = fixtures_df[
         (fixtures_df['event'] == gw) &
         ((fixtures_df['team_h'] == team_id) | (fixtures_df['team_a'] == team_id))
@@ -397,13 +398,13 @@ def predictExpectedGoalsConceded(team_id, fixtures_df, gw, season):
     
 
     features = getExpectedGoalsConcededFeatures(team_id, fixture, fixtures_df, gw, season)
-    features = features[model.feature_names_in_] #enforces column order
+    features = features[cleansheet_model.feature_names_in_] #enforces column order
 
-    # print(model.feature_names_in_)
+    # print(cleansheet_model.feature_names_in_)
 
     # for _, feature in features.iterrows():
     #     print(feature)
-    expected_goals_conceded = float(model.predict(features)[0]) #predict the expected goals conceded for the current gw
+    expected_goals_conceded = float(cleansheet_model.predict(features)[0]) #predict the expected goals conceded for the current gw
 
     return expected_goals_conceded
 
@@ -646,7 +647,7 @@ def getPlayerNext7GWFeatures(player_id, current_gw): #note current_gw has "not" 
     }
 
 
-def predictPlayerNext7GWPoints(player_id, current_gw, model_value):
+def predictPlayerNext7GWPoints(player_id, current_gw, model_value, player_stats):
     """
     Predicts the points for a player in the next 7 gameweeks using the trained model and scaler
     Args:
@@ -675,7 +676,11 @@ def predictPlayerNext7GWPoints(player_id, current_gw, model_value):
     with torch.no_grad():
         predictions = model(x_input)
 
-    return round(predictions.item(), 2) #returns the predicted points for the next gameweek as a float
+    prediction = round(predictions.item(), 2)
+
+    player_minutes_next_gw = predictMinutes(player_stats, current_gw, SEASON)
+
+    return prediction * player_minutes_next_gw[0] #multiply by the probability of playing at least 60 minutes in the next gameweek
 
 
 def convertExpectedGoalsConcededToCleanSheetProb(expected_goals_conceded):
@@ -754,24 +759,24 @@ def getTopPlayersForGameweek(gameweek, season):
     fixtures_df = getFixturesFromAPI() #gets all the fixtures for the season
 
     # print("building xgc lookup")
-    if os.path.exists(f'xghLookup/xgc_lookup_{gameweek}.json'):
-        xgc_lookup = loadxgc(f'xgcLookup/xgc_lookup_{gameweek}.json')
+    if os.path.exists(f'xgcLookup/xgc_lookup_{gameweek}.pkl'):
+        xgc_lookup = loadxgc(f'xgcLookup/xgc_lookup_{gameweek}.pkl')
     else:
         xgc_lookup = buildOpponentXGCLookup(gameweek) #once per gw
-        savexgc(xgc_lookup, f'xgcLookup/xgc_lookup_{gameweek}.json')
+        savexgc(xgc_lookup, f'xgcLookup/xgc_lookup_{gameweek}.pkl')
 
     player_xp = []
     player_next_7_points = []
 
     # print("calculating xp stats")
     for _, player in full_player_id_list.iterrows():
-        next_7_points = round(predictPlayerNext7GWPoints(player['id'], gameweek, 7.0941), 4) #predict the player's points for the next 7 gameweeks
-        player_next_7_points.append([player['first_name'], player['second_name'], next_7_points, player['team'], player['element_type'], player['now_cost'], player['id']])
-
         stats = calculatePlayerExpectedStats(player['id'], gameweek, season, full_player_id_list, fixtures_df, xgc_lookup)
         if stats is not None:
             xp = round(getExpectedPoints(stats, player['element_type']), 4)
             player_xp.append([player['first_name'], player['second_name'], player['team'], xp, stats])
+        
+            next_7_points = round(predictPlayerNext7GWPoints(player['id'], gameweek, 7.0941, stats), 4) #predict the player's points for the next 7 gameweeks
+            player_next_7_points.append([player['first_name'], player['second_name'], next_7_points, player['team'], player['element_type'], player['now_cost'], player['id']])
 
     player_xp = sorted(player_xp, key=lambda p: p[3], reverse=True)
     player_next_7_points = sorted(player_next_7_points, key=lambda p: p[2], reverse=True)
@@ -787,15 +792,12 @@ def getTopPlayersForGameweek(gameweek, season):
     return player_xp, player_next_7_points
 
 def savexgc(xgc_lookup, filename):
-    with open(filename, 'w') as f:
-        json.dump(xgc_lookup, f)
+    with open(filename, 'wb') as f:         
+        pickle.dump(xgc_lookup, f)
 
 def loadxgc(filename):
-    xgc_lookup = {}
-    with open(filename, 'r') as f:
-        xgc_lookup = json.load(f)
-    return xgc_lookup
-
+    with open(filename, 'rb') as f:        
+        return pickle.load(f)
 
 def main():
     season = 2526
