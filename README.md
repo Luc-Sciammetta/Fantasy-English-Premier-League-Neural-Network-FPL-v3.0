@@ -29,4 +29,4 @@ Taken together, it forms a thorough tool for playing Fantasy Premier League, app
     ```
     pip install -r requirements.txt
     ```
-3. Run the main script to start the program --> i dont have a main scrit yet bc its not done :D
+3. Run the main script to start the program --> i dont have a main script yet bc its not done :D

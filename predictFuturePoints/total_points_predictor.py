@@ -46,14 +46,14 @@ def getDataFromCSV(filename):
 
 
 def main():
-    data = getDataFromCSV('get_historical_data/fpl_training_data.csv')
+    data = getDataFromCSV('predictFuturePoints/fpl_training_data.csv')
 
     x_data = data.drop('total_points_plus_7', axis=1)
     y_data = data['total_points_plus_7']
 
-    train_ratio = 0.7
+    train_ratio = 0.75
     val_ratio = 0.15
-    test_ratio = 0.15
+    test_ratio = 0.1
 
     x_train, x_temp, y_train, y_temp = train_test_split(x_data, y_data, test_size=(1 - train_ratio), random_state=42)
     x_val, x_test, y_val, y_test = train_test_split(x_temp, y_temp, test_size=(test_ratio / (val_ratio + test_ratio)), random_state=42)

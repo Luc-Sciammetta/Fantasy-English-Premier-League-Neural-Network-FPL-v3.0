@@ -1,3 +1,5 @@
+import os
+import json
 import numpy as np
 import requests
 import xgboost as xgb
@@ -705,7 +707,7 @@ def calculatePlayerExpectedStats(player_id, gameweek, season, full_player_id_lis
     """
     # print(full_player_id_list[full_player_id_list['id'] == player_id][['first_name', 'second_name', 'team']])
     player_stat = getPlayerStatFromAPI(player_id) #gets the player's stats for each gameweek
-    time.sleep(0.1) #to avoid hitting the API rate limit
+    time.sleep(0.02) #to avoid hitting the API rate limit
 
     #convert player position from id to string
     pos_map = {1: 'GK', 2: 'DEF', 3: 'MID', 4: 'FWD'}
@@ -752,19 +754,23 @@ def getTopPlayersForGameweek(gameweek, season):
     fixtures_df = getFixturesFromAPI() #gets all the fixtures for the season
 
     # print("building xgc lookup")
-    xgc_lookup = buildOpponentXGCLookup(gameweek) #once per gw
+    if os.path.exists(f'xghLookup/xgc_lookup_{gameweek}.json'):
+        xgc_lookup = loadxgc(f'xgcLookup/xgc_lookup_{gameweek}.json')
+    else:
+        xgc_lookup = buildOpponentXGCLookup(gameweek) #once per gw
+        savexgc(xgc_lookup, f'xgcLookup/xgc_lookup_{gameweek}.json')
 
     player_xp = []
     player_next_7_points = []
 
     # print("calculating xp stats")
     for _, player in full_player_id_list.iterrows():
-        next_7_points = round(predictPlayerNext7GWPoints(player['id'], gameweek, 7.208), 7) #predict the player's points for the next 7 gameweeks
+        next_7_points = round(predictPlayerNext7GWPoints(player['id'], gameweek, 7.0941), 4) #predict the player's points for the next 7 gameweeks
         player_next_7_points.append([player['first_name'], player['second_name'], next_7_points, player['team'], player['element_type'], player['now_cost'], player['id']])
 
         stats = calculatePlayerExpectedStats(player['id'], gameweek, season, full_player_id_list, fixtures_df, xgc_lookup)
         if stats is not None:
-            xp = round(getExpectedPoints(stats, player['element_type']), 7)
+            xp = round(getExpectedPoints(stats, player['element_type']), 4)
             player_xp.append([player['first_name'], player['second_name'], player['team'], xp, stats])
 
     player_xp = sorted(player_xp, key=lambda p: p[3], reverse=True)
@@ -779,6 +785,16 @@ def getTopPlayersForGameweek(gameweek, season):
     #     print(f"{i+1}. ", player_next_7_points[i][0], player_next_7_points[i][1], player_next_7_points[i][2])
 
     return player_xp, player_next_7_points
+
+def savexgc(xgc_lookup, filename):
+    with open(filename, 'w') as f:
+        json.dump(xgc_lookup, f)
+
+def loadxgc(filename):
+    xgc_lookup = {}
+    with open(filename, 'r') as f:
+        xgc_lookup = json.load(f)
+    return xgc_lookup
 
 
 def main():

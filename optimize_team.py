@@ -11,7 +11,7 @@ def optimizeFullTeam(players_next_gw, players):
     Returns:
         team: list of dicts with player info for the optimized team
     """
-    problem = pulp.LpProblem("Fantasy Team Optimization", pulp.LpMaximize)
+    problem = pulp.LpProblem("FantasyTeamOptimization", pulp.LpMaximize)
 
     #variables made (in a dict) for each possible player. They can be 0 or 1, where 1 means they made the team and 0 means they didnt
     x = pulp.LpVariable.dict("player", range(0, len(players)), 0, 1, cat=pulp.LpInteger)
@@ -71,7 +71,7 @@ def optimizeTeamFormation(team):
         bench: list of dicts with player info for the optimized bench
         total_points: total predicted points for the starting 11 for the next gameweek
     """
-    problem = pulp.LpProblem("Fantasy Formation Optimization", pulp.LpMaximize)
+    problem = pulp.LpProblem("FantasyFormationOptimization", pulp.LpMaximize)
 
     x = pulp.LpVariable.dict("player", range(0, len(team)), 0, 1, cat=pulp.LpInteger)
 
@@ -113,14 +113,14 @@ def determine_transfers(team, budget, free_transfers, next_gw, next_7):
         free_left: remaining free transfers after transfers
         old_team: list of dicts with player info for the old team (before transfers)
     """
-    problem = pulp.LpProblem("Fantasy Team Transfer Optimization", pulp.LpMaximize)
+    problem = pulp.LpProblem("FantasyTeamTransferOptimization", pulp.LpMaximize)
 
     x = pulp.LpVariable.dict("player", range(0, len(next_7)), 0, 1, cat=pulp.LpInteger)
 
     owned_names = {(p['first_name'], p['second_name']) for p in team}
     owned = [1 if (next_7[i][0], next_7[i][1]) in owned_names else 0 for i in range(len(next_7))]
 
-    paid_transfers = pulp.LpVariable("paid_transfers", lowBound=0)
+    paid_transfers = pulp.LpVariable("paid_transfers", lowBound=0, upBound=2)
     problem += paid_transfers >= (15 - pulp.lpSum(owned[i] * x[i] for i in range(len(next_7)))) - free_transfers #number of paid transfers must be at least the number of new players in the team minus the free transfers available
 
     problem += (pulp.lpSum(next_7[i][2] * x[i] for i in range(len(next_7))) - (4+PENALTY) * paid_transfers) #maximize points of new team minus 4 points for each paid transfer
