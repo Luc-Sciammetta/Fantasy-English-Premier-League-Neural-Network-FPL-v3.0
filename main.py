@@ -10,7 +10,7 @@ from optimize_team import optimizeFullTeam, optimizeTeamFormation, determine_tra
 from predictPlayerPoints import getTopPlayersForGameweek
 
 SEASON = os.environ.get('SEASON', 2526)  # Default to 2526 if not set
-TRANSFER_POINTS_THRESHOLD = 15 #if the transfers that we make improve the team by x points in the next 7 gameweeks
+TRANSFER_POINTS_THRESHOLD = 30 #if the transfers that we make improve the team by x points in the next 7 gameweeks
 
 def plot_list(lst, title, xlabel, ylabel):
     plt.plot(lst)
@@ -175,21 +175,29 @@ def run(gw):
         if new_team_value - old_team_value > TRANSFER_POINTS_THRESHOLD: #if the transfers that we make improve the team by x points in the next 7 gameweeks
             #make the changes
             print("\nTransfers will improve the team by:", new_team_value - old_team_value, "points")
+            print("Old Team Expected 7GW Points:", old_team_value)
+            print("New Team Expected 7GW Points:", new_team_value)
             out_t, in_t = determineWhoChanged(old_team, team)
+            
+            print("\nPlayers Transfered Out:")
+            for x in out_t:
+                print(x['first_name'], x['second_name'])
+            print("\nPlayers Transfered In:")
+            for x in in_t:
+                print(x['first_name'], x['second_name'])
+
         else: #revert the team back and bank the free transfer for next week
             print("\nNot worth making transfers, banking them for next week.")
+            print("Old Team Expected 7GW Points:", old_team_value)
+            print("New Team Expected 7GW Points:", new_team_value)
             team = old_team
             transfers = getTransfers() #we want the amount of transfers we have available this week
 
-        print("\nPlayers Transfered Out:")
-        for x in out_t:
-            print(x['first_name'], x['second_name'])
-        print("\nPlayers Transfered In:")
-        for x in in_t:
-            print(x['first_name'], x['second_name'])
-
     starters, bench, value = optimizeTeamFormation(team)
-    print("optimized team value:", value)
+    capitain = starters[0]
+    vice_captain = starters[1]
+    print("\nCaptain:", capitain['first_name'], capitain['second_name'])
+    print("Vice Captain:", vice_captain['first_name'], vice_captain['second_name'])
 
     # print(f"\nOptimized Team for Gameweek {gameweek}:")
     # print("Starters:")
@@ -222,9 +230,9 @@ def calculateActualPoints(starters, bench, gameweek, season=SEASON):
     minutes_by_id = {e['id']: e['stats']['minutes']      for e in live['elements']}
 
     # captain = highest predicted in the XI, vice = second highest
-    ranked  = sorted(starters, key=lambda p: p['points_next_gw'], reverse=True)
+    ranked = sorted(starters, key=lambda p: p['points_next_gw'], reverse=True)
     captain = ranked[0]
-    vice    = ranked[1]
+    vice = ranked[1]
 
     total = 0
     print(f"\nSTARTERS breakdown (predicted -> actual -> next_7):")
@@ -237,7 +245,6 @@ def calculateActualPoints(starters, bench, gameweek, season=SEASON):
     print(f"\nBENCH breakdown (predicted -> actual -> next_7):")
     for p in bench:
         actual = points_by_id.get(p['id'], 0)
-        total += actual
         print(f"  {p['first_name']} {p['second_name']:<25} "
               f"pred {p['points_next_gw']:>5.2f} -> actual {actual} -> next_7 {p['points']:.2f}")
 
@@ -260,10 +267,12 @@ if __name__ == "__main__":
     season_total = 0
     points_each_gw = []
     for i in range(1, 39): #simulate the season
+        start_run = time.time()
         gw_points = run(i)
         season_total += gw_points
         points_each_gw.append(gw_points)
         print(f"\nTotal points after GW{i}: {season_total}")
+        print(f"Execution time for GW{i}: {float((time.time() - start_run)/60)} minutes")
     end = time.time()
     print(f"\nExecution time: {float((end - start)/60)} minutes")
     print(f"Total points for the season: {season_total}")

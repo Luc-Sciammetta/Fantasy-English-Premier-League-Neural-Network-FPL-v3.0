@@ -15,6 +15,7 @@ from predictGoals.getGoalsDataset import computeOpponentxGCLookup
 from predictFuturePoints.total_points_predictor import FPLModel
 
 SEASON = os.environ.get('SEASON', 2526)  # Default to 2526 if not set
+ALPHA = float(os.environ.get('ALPHA', 0.15))  #weight for the next 7 gameweek points in the overall expected points calculation
 
 P_D = { #points distribution
     "minutes": [2, 2, 2, 2],
@@ -723,7 +724,7 @@ def calculatePlayerExpectedStats(player_id, gameweek, season, full_player_id_lis
 
     gw_rows = player_stat[player_stat['round'] == gameweek]
     if gw_rows.empty: #for when there is no gw
-        return None
+        return None, None
     opponent_team_id = gw_rows.iloc[0]['opponent_team']
     opp_xgc = xgc_lookup.get((opponent_team_id, gameweek), np.nan)
 
@@ -739,14 +740,14 @@ def calculatePlayerExpectedStats(player_id, gameweek, season, full_player_id_lis
     # diagnoseCleanSheetSpread(fixtures_df, gameweek, season)
     # df, per_team = diagnoseAcrossGameweeks(fixtures_df, season, range(1, 39))
 
-    return {
+    return ({
         'minutes_prob': minutes_prob,
         'minutes_class': minutes_cls,
         'expected_goals': expected_goals,
         'expected_assists': expected_assists,
         'expected_goals_conceded': expected_goals_conceded,
         'clean_sheet_prob': clean_sheet_prob,
-    }
+    }, player_stat)
 
 def getExpectedPoints(stats, player_position):
     """Calculates the expected points for a player in a given gameweek using the predicted stats and the average points per stat for the player's position."""
@@ -770,13 +771,13 @@ def getTopPlayersForGameweek(gameweek, season):
 
     # print("calculating xp stats")
     for _, player in full_player_id_list.iterrows():
-        stats = calculatePlayerExpectedStats(player['id'], gameweek, season, full_player_id_list, fixtures_df, xgc_lookup)
-        if stats is not None:
-            xp = round(getExpectedPoints(stats, player['element_type']), 4)
-            player_xp.append([player['first_name'], player['second_name'], player['team'], xp, stats])
-        
-            next_7_points = round(predictPlayerNext7GWPoints(player['id'], gameweek, 7.0941, stats), 4) #predict the player's points for the next 7 gameweeks
+        stats, player_stat = calculatePlayerExpectedStats(player['id'], gameweek, season, full_player_id_list, fixtures_df, xgc_lookup)
+        if stats is not None:    
+            next_7_points = round(predictPlayerNext7GWPoints(player['id'], gameweek, 7.0941, player_stat), 4) #predict the player's points for the next 7 gameweeks
             player_next_7_points.append([player['first_name'], player['second_name'], next_7_points, player['team'], player['element_type'], player['now_cost'], player['id']])
+
+            xp = getExpectedPoints(stats, player['element_type']) + ALPHA * next_7_points #combine with expected long term points to promote consistency (a player who has a higher x7p will probably do well, so include that)
+            player_xp.append([player['first_name'], player['second_name'], player['team'], round(xp, 4), stats])
 
     player_xp = sorted(player_xp, key=lambda p: p[3], reverse=True)
     player_next_7_points = sorted(player_next_7_points, key=lambda p: p[2], reverse=True)
