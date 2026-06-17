@@ -1,6 +1,7 @@
+import os
 import pulp
 
-PENALTY = 4 #done so that the optimization will prefer to make free transfers unless its absolutely sure that it will be a good trade
+PENALTY = 8  #done so that the optimization will prefer to make free transfers unless its absolutely sure that it will be a good trade
             #so we double the actual cost of making an extra costly transfer
 
 def optimizeFullTeam(players_next_gw, players):
@@ -120,7 +121,7 @@ def determine_transfers(team, budget, free_transfers, next_gw, next_7):
     owned_names = {(p['first_name'], p['second_name']) for p in team}
     owned = [1 if (next_7[i][0], next_7[i][1]) in owned_names else 0 for i in range(len(next_7))]
 
-    paid_transfers = pulp.LpVariable("paid_transfers", lowBound=0, upBound=2)
+    paid_transfers = pulp.LpVariable("paid_transfers", lowBound=0)
     problem += paid_transfers >= (15 - pulp.lpSum(owned[i] * x[i] for i in range(len(next_7)))) - free_transfers #number of paid transfers must be at least the number of new players in the team minus the free transfers available
 
     problem += (pulp.lpSum(next_7[i][2] * x[i] for i in range(len(next_7))) - (4+PENALTY) * paid_transfers) #maximize points of new team minus 4 points for each paid transfer
@@ -176,6 +177,9 @@ def determine_transfers(team, budget, free_transfers, next_gw, next_7):
     transfers_made = sum(1 for i in range(len(next_7)) if x[i].varValue == 1 and owned[i] == 0) #number of new players in the team
     free_left = max(0, free_transfers - transfers_made)
 
+    if pulp.LpStatus[problem.status] != "Optimal": #the optimization didnt find a solution
+        return team, budget, free_transfers, team 
+    
     return new_team, new_budget, free_left, team
 
 

@@ -24,6 +24,14 @@ P_D = { #points distribution
     "clean_sheets": [4, 4, 1, 0],
 }
 
+total_FPL_players = { #total number of FPL teams in each season (roughly)
+    2122: 9170000.0,
+    2223: 11450000.0,
+    2324: 10910000.0,
+    2425: 11500000.0,
+    2526: 13100000.0,
+}
+
 _player_stat_cache = {}
 
 minutes_model = xgb.XGBClassifier()
@@ -544,6 +552,9 @@ def getPlayerNext7GWFeatures(player_id, current_gw): #note current_gw has "not" 
     #FDR for next 7
     fdr = []
 
+    # % selected for past 5
+    selected_by = []
+
     player_season_stats, player_gw_stats = getPlayerFromID(player_id)
     
     player_position = player_season_stats['element_type']
@@ -556,7 +567,8 @@ def getPlayerNext7GWFeatures(player_id, current_gw): #note current_gw has "not" 
     games_played = 0
     for i in range(current_gw-1, current_gw-6, -1):
         gw_stats = player_gw_stats[player_gw_stats['round'] == i]
-        if len(gw_stats) == 0:
+        if len(gw_stats) == 0: #TODO: This is where we'll add things for a cold start at the beginning of the gw, but also need to distingush between blank gw or beggning of the season
+            selected_by.append(0)
             continue #blank gw
             # raise Exception(f"No stats found for player {player_id} in gameweek {i}")
         else:
@@ -575,6 +587,8 @@ def getPlayerNext7GWFeatures(player_id, current_gw): #note current_gw has "not" 
             starts_last_5 += gw_stats['starts']
             transfers_in_last_5 += gw_stats['transfers_in']
             transfers_out_last_5 += gw_stats['transfers_out']
+
+            selected_by.append(float(gw_stats['selected'] / total_FPL_players[SEASON] * 100)) #convert to percentage of teams that selected the player in that gw
 
             if gw_stats['minutes'] > 0:
                 games_played += 1
@@ -608,6 +622,7 @@ def getPlayerNext7GWFeatures(player_id, current_gw): #note current_gw has "not" 
                 fdr.append(next_fuxture['team_h_difficulty'])
 
     return {
+        # 'season': SEASON,
         'points_last_5': points_last_5,
         'minutes_per_game_last_5': minutes_per_game_last_5,
         'goals_last_5': goals_last_5,
@@ -641,7 +656,12 @@ def getPlayerNext7GWFeatures(player_id, current_gw): #note current_gw has "not" 
         'fdr_current_plus_3': fdr[3],
         'fdr_current_plus_4': fdr[4],
         'fdr_current_plus_5': fdr[5],
-        'fdr_current_plus_6': fdr[6] , 
+        'fdr_current_plus_6': fdr[6],
+        'selected_by': selected_by[0],
+        'selected_by_minus_1': selected_by[1],
+        'selected_by_minus_2': selected_by[2],
+        'selected_by_minus_3': selected_by[3],
+        'selected_by_minus_4': selected_by[4],
         'position_1': 1 if player_position == 2 else 0,  # position_1 (DEF)
         'position_2': 1 if player_position == 3 else 0,  # position_2 (MID)
         'position_3': 1 if player_position == 4 else 0,  # position_3 (FWD)
@@ -660,7 +680,7 @@ def predictPlayerNext7GWPoints(player_id, current_gw, model_value, player_stats)
     """
     torch.manual_seed(42) #set the seed for reproducibility
 
-    model = FPLModel(input_size=35) #number of inputs from getHistoricalData_OneGW.py
+    model = FPLModel(input_size=40) #number of inputs from getHistoricalData_OneGW.py
     model.load_state_dict(torch.load(f'predictFuturePoints/{str(model_value)}_best_model.pth'))
     scaler = joblib.load(f'predictFuturePoints/{str(model_value)}_scaler.pkl')
 
@@ -773,7 +793,7 @@ def getTopPlayersForGameweek(gameweek, season):
     for _, player in full_player_id_list.iterrows():
         stats, player_stat = calculatePlayerExpectedStats(player['id'], gameweek, season, full_player_id_list, fixtures_df, xgc_lookup)
         if stats is not None:    
-            next_7_points = round(predictPlayerNext7GWPoints(player['id'], gameweek, 7.0941, player_stat), 4) #predict the player's points for the next 7 gameweeks
+            next_7_points = round(predictPlayerNext7GWPoints(player['id'], gameweek, 7.0657, player_stat), 4) #predict the player's points for the next 7 gameweeks
             player_next_7_points.append([player['first_name'], player['second_name'], next_7_points, player['team'], player['element_type'], player['now_cost'], player['id']])
 
             xp = getExpectedPoints(stats, player['element_type']) + ALPHA * next_7_points #combine with expected long term points to promote consistency (a player who has a higher x7p will probably do well, so include that)
@@ -804,7 +824,9 @@ def main():
     season = 2526
     gameweek = 15
 
-    getTopPlayersForGameweek(gameweek, season)
+    print(getPlayerNext7GWFeatures(1, 12))
+
+    # getTopPlayersForGameweek(gameweek, season)
 
 
 if __name__ == "__main__":

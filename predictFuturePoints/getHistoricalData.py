@@ -7,6 +7,13 @@ import ssl
 ssl._create_default_https_context = ssl._create_unverified_context
 
 seasons = [2223, 2324, 2425] #1819, 1920, 2021, 2122, 2526
+total_FPL_players = { #total number of FPL teams in each season (roughly)
+    2122: 9170000.0,
+    2223: 11450000.0,
+    2324: 10910000.0,
+    2425: 11500000.0,
+    2526: 13100000.0,
+}
 
 def encodeName(name):
     """
@@ -84,6 +91,9 @@ def getPlayerStatsForAllGameweeks(playerid, allPlayersDf, season):
 
     df['position'] = player_position #adds the player's position to the df
 
+    num_FPL_players = total_FPL_players[season]
+    df['selected'] = (df['selected'].astype(float) / num_FPL_players * 100).round(4)
+
     return df
 
 
@@ -114,7 +124,7 @@ def getFutureValue(df, index, offset, column, default):
         The value at the future index, or the default value if the future index is out of bounds.
     """
     future_index = index + offset
-    if future_index >= len(df):
+    if future_index >= len(df) or future_index < 0:
         return default
     else:
         return df.iloc[future_index][column]
@@ -140,7 +150,7 @@ def getFDRForPlayerInGameweek(playerTeamID, opponentTeamID, wasHome, gameweek, f
         return int(fixture['team_a_difficulty'])
 
 
-def cleanPlayerDataframe(df, fixturesdf, playerTeamID):
+def cleanPlayerDataframe(df, fixturesdf, playerTeamID, season):
     """
     This function cleans the player's data by adding additional features.
     Args:
@@ -151,6 +161,7 @@ def cleanPlayerDataframe(df, fixturesdf, playerTeamID):
         pandas.DataFrame: The cleaned player's data
     """
     position_dict = {"GK": 0, "DEF": 1, "MID": 2, "FWD": 3}
+    seasons = []
 
     points_last_5 = []
     minutes_per_game_last_5 = []
@@ -193,6 +204,13 @@ def cleanPlayerDataframe(df, fixturesdf, playerTeamID):
     fdr_current_plus_4 = []
     fdr_current_plus_5 = []
     fdr_current_plus_6 = []
+
+    # selected by for past 5 games (players in FPL game)
+    selected_by = []
+    selected_by_minus_1 = []
+    selected_by_minus_2 = []
+    selected_by_minus_3 = []
+    selected_by_minus_4 = []
 
     total_points_plus_7 = [] #target metric
 
@@ -279,6 +297,14 @@ def cleanPlayerDataframe(df, fixturesdf, playerTeamID):
         home_away_current_plus_5.append(int(getFutureValue(df, index, 5, 'was_home', -1)))
         home_away_current_plus_6.append(int(getFutureValue(df, index, 6, 'was_home', -1)))
 
+        selected_by.append(int(getFutureValue(df, index, 0, 'selected', -1)))
+        selected_by_minus_1.append(int(getFutureValue(df, index, -1, 'selected', -1)))
+        selected_by_minus_2.append(int(getFutureValue(df, index, -2, 'selected', -1)))
+        selected_by_minus_3.append(int(getFutureValue(df, index, -3, 'selected', -1)))
+        selected_by_minus_4.append(int(getFutureValue(df, index, -4, 'selected', -1)))
+
+        seasons.append(season)
+
         for offset in range(0, 7):
             future_opponent = getFutureValue(df, index, offset, 'opponent_team', -1)
             future_was_home = getFutureValue(df, index, offset, 'was_home', -1)
@@ -302,6 +328,7 @@ def cleanPlayerDataframe(df, fixturesdf, playerTeamID):
         total_points_plus_7.append(total_points)
             
     df_dict = {
+        'season': seasons,
         'points_last_5': points_last_5,
         'minutes_per_game_last_5': minutes_per_game_last_5,
         'goals_last_5': goals_last_5,
@@ -336,7 +363,12 @@ def cleanPlayerDataframe(df, fixturesdf, playerTeamID):
         'fdr_current_plus_3': fdr_current_plus_3,
         'fdr_current_plus_4': fdr_current_plus_4,
         'fdr_current_plus_5': fdr_current_plus_5,
-        'fdr_current_plus_6': fdr_current_plus_6 , 
+        'fdr_current_plus_6': fdr_current_plus_6,
+        'selected_by': selected_by,
+        'selected_by_minus_1': selected_by_minus_1,
+        'selected_by_minus_2': selected_by_minus_2,
+        'selected_by_minus_3': selected_by_minus_3,
+        'selected_by_minus_4': selected_by_minus_4, 
         'total_points_plus_7': total_points_plus_7 
     }
 
@@ -377,7 +409,7 @@ def getFullDataset():
             try:
                 player_team_id = players_raw[players_raw['id'] == playerid].iloc[0]['team']
                 player_stat = getPlayerStatsForAllGameweeks(playerid, full_player_id_list, season)
-                cleaned_player_df = cleanPlayerDataframe(player_stat, fixtures, player_team_id)
+                cleaned_player_df = cleanPlayerDataframe(player_stat, fixtures, player_team_id, season)
                 if len(cleaned_player_df) > 0:
                     all_data.append(cleaned_player_df)
             except Exception as e:
@@ -392,7 +424,7 @@ def getFullDataset():
     dummy_cols = [col for col in final_df.columns if col.startswith('position_')] #now convert the true/false to ints
     final_df[dummy_cols] = final_df[dummy_cols].astype(int)
 
-    final_df.to_csv('fpl_training_data.csv', index=False)
+    final_df.to_csv('predictFuturePoints/fpl_training_data_with_selected.csv', index=False)
     print(f"Done. {len(final_df)} rows saved")
     return final_df
 

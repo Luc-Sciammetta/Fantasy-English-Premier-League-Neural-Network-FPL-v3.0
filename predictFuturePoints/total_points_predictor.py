@@ -46,9 +46,9 @@ def getDataFromCSV(filename):
 
 
 def main():
-    data = getDataFromCSV('predictFuturePoints/fpl_training_data.csv')
+    data = getDataFromCSV('predictFuturePoints/fpl_training_data_with_selected.csv')
 
-    x_data = data.drop('total_points_plus_7', axis=1)
+    x_data = data.drop(['total_points_plus_7', 'season'], axis=1)
     y_data = data['total_points_plus_7']
 
     train_ratio = 0.75
@@ -170,5 +170,5 @@ def main():
     # model.load_state_dict(torch.load('fpl_model.pth'))
 
 if __name__ == '__main__':
-    for i in range(0, 10):
+    for i in range(0, 20):
         main()

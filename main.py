@@ -10,7 +10,7 @@ from optimize_team import optimizeFullTeam, optimizeTeamFormation, determine_tra
 from predictPlayerPoints import getTopPlayersForGameweek
 
 SEASON = os.environ.get('SEASON', 2526)  # Default to 2526 if not set
-TRANSFER_POINTS_THRESHOLD = 30 #if the transfers that we make improve the team by x points in the next 7 gameweeks
+TRANSFER_POINTS_THRESHOLD = 22 
 
 def plot_list(lst, title, xlabel, ylabel):
     plt.plot(lst)
