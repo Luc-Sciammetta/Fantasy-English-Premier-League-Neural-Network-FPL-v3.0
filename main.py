@@ -34,13 +34,13 @@ def getCurrentGameweek():
 
 def getBudget():
     """Gets the current budget from the budget.txt file."""
-    budget_file = open(r"teamInfo/budget.txt", "r")
+    budget_file = open(r"teamInfo2/budget.txt", "r")
     budgets = budget_file.readlines()
     return int(budgets[-1]) #the last value in the file is the current budget
 
 def getTeam(players_next_gw, player_next_7_points):
     """Gets the current team from the team.txt file."""
-    team_file = open(r"teamInfo/team.txt", "r")
+    team_file = open(r"teamInfo2/team.txt", "r")
     teams = team_file.readlines()
     team = populateTeam(teams[-1].split(",")[:-1], players_next_gw, player_next_7_points)
     return team
@@ -83,25 +83,25 @@ def populateTeam(player_ids, players_next_gw, player_next_7_points):
 
 def getTransfers():
     """Gets the current number of transfers from the transfers.txt file."""
-    transfers_file = open(r"teamInfo/transfers.txt", "r")
+    transfers_file = open(r"teamInfo2/transfers.txt", "r")
     transfers = transfers_file.readlines()
     return (int(transfers[-1]) + 1) if int(transfers[-1]) < 5 else 5 
 
 def saveBudget(val):
     """Saves the current budget to the budget.txt file."""
-    budget_file = open(r"teamInfo/budget.txt", "a")
+    budget_file = open(r"teamInfo2/budget.txt", "a")
     budget_file.write(str(val) + "\n")
     budget_file.close()
 
 def saveTransfers(val):
     """Saves the current number of transfers to the transfers.txt file."""
-    transfers_file = open(r"teamInfo/transfers.txt", "a")
+    transfers_file = open(r"teamInfo2/transfers.txt", "a")
     transfers_file.write(str(val) + "\n")
     transfers_file.close()
 
 def saveTeam(team):
     """Saves the current team to the team.txt file."""
-    team_file = open(r"teamInfo/team.txt", "a")
+    team_file = open(r"teamInfo2/team.txt", "a")
     for player in team:
         team_file.write(str(player['id']) + ",")
     team_file.write("\n")
@@ -172,7 +172,10 @@ def run(gw):
         team, budget, transfers, old_team = determine_transfers(team, budget, transfers, players_next_gw, player_next_7_points) #the new team, the remaining budget, the remaining transfers
         old_team_value = getTeamExpected7GWPoints(old_team)
         new_team_value = getTeamExpected7GWPoints(team)
-        if new_team_value - old_team_value > TRANSFER_POINTS_THRESHOLD: #if the transfers that we make improve the team by x points in the next 7 gameweeks
+
+        #if the transfers that we make improve the team by x points in the next 7 gameweeks
+        #we include the gameweek != 38 since if its the last gameweek, there is no next gw, so make all the transfers we want to have the best possible team for the last gw
+        if new_team_value - old_team_value > TRANSFER_POINTS_THRESHOLD and gameweek != 38: 
             #make the changes
             print("\nTransfers will improve the team by:", new_team_value - old_team_value, "points")
             print("Old Team Expected 7GW Points:", old_team_value)
@@ -263,6 +266,7 @@ def calculateActualPoints(starters, bench, gameweek, season=SEASON):
 
 
 if __name__ == "__main__":
+    print("Starting Fantasy EPL AI...")
     start = time.time()
     season_total = 0
     points_each_gw = []

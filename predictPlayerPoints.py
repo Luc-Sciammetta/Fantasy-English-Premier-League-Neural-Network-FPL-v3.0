@@ -613,16 +613,14 @@ def getPlayerNext7GWFeatures(player_id, current_gw): #note current_gw has "not" 
             fdr.append(-1) #use -1 to indicate no fixture
             continue #blank gw
         else:
-            next_fuxture = next_fuxture.iloc[0]
+            next_fuxture = next_fuxture.iloc[0] #TODO: This breaks double gws since it only gets the first gw of the 2
             if next_fuxture['team_h'] == player_season_stats['team']:
                 home_away.append(1)
                 fdr.append(next_fuxture['team_a_difficulty'])
             else:
                 home_away.append(0)
                 fdr.append(next_fuxture['team_h_difficulty'])
-
     return {
-        # 'season': SEASON,
         'points_last_5': points_last_5,
         'minutes_per_game_last_5': minutes_per_game_last_5,
         'goals_last_5': goals_last_5,
@@ -668,7 +666,7 @@ def getPlayerNext7GWFeatures(player_id, current_gw): #note current_gw has "not" 
     }
 
 
-def predictPlayerNext7GWPoints(player_id, current_gw, model_value, player_stats):
+def predictPlayerNext7GWPointsTorch(player_id, current_gw, model_value, player_stats):
     """
     Predicts the points for a player in the next 7 gameweeks using the trained model and scaler
     Args:
@@ -792,8 +790,8 @@ def getTopPlayersForGameweek(gameweek, season):
     # print("calculating xp stats")
     for _, player in full_player_id_list.iterrows():
         stats, player_stat = calculatePlayerExpectedStats(player['id'], gameweek, season, full_player_id_list, fixtures_df, xgc_lookup)
-        if stats is not None:    
-            next_7_points = round(predictPlayerNext7GWPoints(player['id'], gameweek, 7.0657, player_stat), 4) #predict the player's points for the next 7 gameweeks
+        if stats is not None:  
+            next_7_points = round(predictPlayerNext7GWPointsTorch(player['id'], gameweek, 7.0657, player_stat), 4) #PyTorch model
             player_next_7_points.append([player['first_name'], player['second_name'], next_7_points, player['team'], player['element_type'], player['now_cost'], player['id']])
 
             xp = getExpectedPoints(stats, player['element_type']) + ALPHA * next_7_points #combine with expected long term points to promote consistency (a player who has a higher x7p will probably do well, so include that)
