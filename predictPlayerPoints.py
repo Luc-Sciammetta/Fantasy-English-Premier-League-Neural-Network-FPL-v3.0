@@ -17,6 +17,9 @@ from predictFuturePoints.total_points_predictor import FPLModel
 SEASON = os.environ.get('SEASON', 2526)  # Default to 2526 if not set
 ALPHA = float(os.environ.get('ALPHA', 0.15))  #weight for the next 7 gameweek points in the overall expected points calculation
 
+BLANK_MULTIPLIER = 0.35
+DOUBLE_MULTIPLIER = 1.3
+
 P_D = { #points distribution
     "minutes": [2, 2, 2, 2],
     "goals_scored": [10, 6, 5, 4], 
@@ -175,6 +178,18 @@ def getPlayerFromID(player_id):
     df_gameweek = getPlayerStatFromAPI(player['id'])
     return player, df_gameweek #returns a tuple of a series, and a dataframe
 
+def determineBlankDoubleGWs(player_id, current_gw, fixturesdf):
+    player_season_stats, _ = getPlayerFromID(player_id)
+    upcoming_games = []
+    for i in range(current_gw, current_gw+7):
+        next_fuxture = fixturesdf[(fixturesdf['event'] == i) & ((fixturesdf['team_h'] == player_season_stats['team']) | (fixturesdf['team_a'] == player_season_stats['team']))] #get the next fixture for the player
+        if len(next_fuxture) == 0: #blank gw
+            upcoming_games.append(0)
+        elif len(next_fuxture) == 1: #single gw
+            upcoming_games.append(1)
+        else: #double gw
+            upcoming_games.append(len(next_fuxture))
+    return upcoming_games
 
 #----------------------Prediction functions---------------------
 def predictMinutes(player_stats, gw, season):
@@ -607,19 +622,26 @@ def getPlayerNext7GWFeatures(player_id, current_gw): #note current_gw has "not" 
     fixtures = getFixturesFromAPI()
     for i in range(current_gw, current_gw+7):
         next_fuxture = fixtures[(fixtures['event'] == i) & ((fixtures['team_h'] == player_season_stats['team']) | (fixtures['team_a'] == player_season_stats['team']))] #get the next fixture for the player
-        if len(next_fuxture) == 0:
-            # print(f"No fixture found for player {player_id} in gameweek {i}")
+        if len(next_fuxture) == 0: #^blank gw
             home_away.append(-1) #use -1 to indicate no fixture
             fdr.append(-1) #use -1 to indicate no fixture
-            continue #blank gw
+            continue 
         else:
-            next_fuxture = next_fuxture.iloc[0] #TODO: This breaks double gws since it only gets the first gw of the 2
-            if next_fuxture['team_h'] == player_season_stats['team']:
-                home_away.append(1)
-                fdr.append(next_fuxture['team_a_difficulty'])
-            else:
-                home_away.append(0)
-                fdr.append(next_fuxture['team_h_difficulty'])
+            #?just do an average of the home/away/fdr and that'll be our single/double gw value
+            home_away_tally = 0
+            fdr_tally = 0
+            num_games = len(next_fuxture)
+            for _, fixture in next_fuxture.iterrows():
+                if fixture['team_h'] == player_season_stats['team']:
+                    home_away_tally += 1
+                    fdr_tally += fixture['team_a_difficulty']
+                else:
+                    home_away_tally += 0
+                    fdr_tally += fixture['team_h_difficulty']
+            home_away.append(float(home_away_tally / num_games))
+            fdr.append(float(fdr_tally / num_games))
+
+            
     return {
         'points_last_5': points_last_5,
         'minutes_per_game_last_5': minutes_per_game_last_5,
@@ -666,13 +688,15 @@ def getPlayerNext7GWFeatures(player_id, current_gw): #note current_gw has "not" 
     }
 
 
-def predictPlayerNext7GWPointsTorch(player_id, current_gw, model_value, player_stats):
+def predictPlayerNext7GWPointsTorch(player_id, current_gw, model_value, player_stats, double_blanks):
     """
     Predicts the points for a player in the next 7 gameweeks using the trained model and scaler
     Args:
-      player_id: the player's ID in the FPL API
-      current_gw: the current gameweek (the gameweek we want to predict for, which has not happened yet)
+        player_id: the player's ID in the FPL API
+        current_gw: the current gameweek (the gameweek we want to predict for, which has not happened yet)
         model_value: the value of the model we want to use (the value is the MAE of the model on the validation set, which is used in the filename of the saved model and scaler)
+        player_stats: the stats of the player
+        double_blanks: list of the number of games a player has for each gw in the next 7 games
     Returns: 
         The predicted points for the next 7 gameweeks as a float
     """
@@ -697,9 +721,24 @@ def predictPlayerNext7GWPointsTorch(player_id, current_gw, model_value, player_s
 
     prediction = round(predictions.item(), 2)
 
-    player_minutes_next_gw = predictMinutes(player_stats, current_gw, SEASON)
+    recent = player_stats[player_stats['round'] < current_gw].tail(10)
+    playing_rate_last_10 = (recent['minutes'] > 0).mean() if len(recent) > 0 else 1
 
-    return prediction * player_minutes_next_gw[0] #multiply by the probability of playing at least 60 minutes in the next gameweek
+    double_blanks_multiplier = 0
+    for game in double_blanks:
+        if game == 0:
+            double_blanks_multiplier += BLANK_MULTIPLIER #should be 0 but i dont want it to be 0 for reasons i cant explain in a comment
+        elif game > 1:
+            double_blanks_multiplier += (game * DOUBLE_MULTIPLIER) #small extra bonus for double gws
+        else:
+            double_blanks_multiplier += 1
+
+    #calculations for final predicted next7 points
+    total = prediction * playing_rate_last_10 #multiply by the playing rate of the player in the last 10 games
+    total = float(total / 7) #7 gws ahead
+    total *= double_blanks_multiplier #multiplier to benifit players w/ double gw and hurt those w/ blanks
+
+    return total
 
 
 def convertExpectedGoalsConcededToCleanSheetProb(expected_goals_conceded):
@@ -742,9 +781,14 @@ def calculatePlayerExpectedStats(player_id, gameweek, season, full_player_id_lis
 
     gw_rows = player_stat[player_stat['round'] == gameweek]
     if gw_rows.empty: #for when there is no gw
-        return None, None
-    opponent_team_id = gw_rows.iloc[0]['opponent_team']
-    opp_xgc = xgc_lookup.get((opponent_team_id, gameweek), np.nan)
+        return None, player_stat
+    
+    opp_xgc_tally = 0
+    for _, row in gw_rows.iterrows():
+        opponent_team_id = row['opponent_team']
+        val = xgc_lookup.get((opponent_team_id, gameweek), np.nan)
+        opp_xgc_tally += 1.0 if pd.isna(val) else val
+    opp_xgc = float(opp_xgc_tally / len(gw_rows))
 
     minutes_prob, minutes_cls = predictMinutes(player_stat, gameweek, season)
 
@@ -789,12 +833,26 @@ def getTopPlayersForGameweek(gameweek, season):
 
     # print("calculating xp stats")
     for _, player in full_player_id_list.iterrows():
+        double_blanks = determineBlankDoubleGWs(player['id'], gameweek, fixtures_df)
         stats, player_stat = calculatePlayerExpectedStats(player['id'], gameweek, season, full_player_id_list, fixtures_df, xgc_lookup)
-        if stats is not None:  
-            next_7_points = round(predictPlayerNext7GWPointsTorch(player['id'], gameweek, 7.0657, player_stat), 4) #PyTorch model
-            player_next_7_points.append([player['first_name'], player['second_name'], next_7_points, player['team'], player['element_type'], player['now_cost'], player['id']])
+        
+        #*next 7 points calculation
+        next_7_points = round(predictPlayerNext7GWPointsTorch(player['id'], gameweek, 7.0657, player_stat, double_blanks), 4) #PyTorch model
+        player_next_7_points.append([player['first_name'], player['second_name'], next_7_points, player['team'], player['element_type'], player['now_cost'], player['id'], player['total_points']])
 
+        #*single points gw calculation
+        if double_blanks[0] == 0: #^this gw is a blank
+            #! the stats variable would be a dict with all values at -1
+            xp = 0
+            player_xp.append([player['first_name'], player['second_name'], player['team'], xp, stats])
+        elif stats is None:                              # fixtures say plays, but no history row — no usable stats
+            xp = 0
+            player_xp.append([player['first_name'], player['second_name'], player['team'], xp, stats])
+        elif double_blanks[0] == 1: #^normal gw
             xp = getExpectedPoints(stats, player['element_type']) + ALPHA * next_7_points #combine with expected long term points to promote consistency (a player who has a higher x7p will probably do well, so include that)
+            player_xp.append([player['first_name'], player['second_name'], player['team'], round(xp, 4), stats])
+        else: #^multiply our xp by the amount of games we'll play
+            xp = double_blanks[0] * getExpectedPoints(stats, player['element_type']) + (ALPHA * next_7_points) #combine with expected long term points to promote consistency (a player who has a higher x7p will probably do well, so include that)
             player_xp.append([player['first_name'], player['second_name'], player['team'], round(xp, 4), stats])
 
     player_xp = sorted(player_xp, key=lambda p: p[3], reverse=True)
@@ -822,7 +880,12 @@ def main():
     season = 2526
     gameweek = 15
 
-    print(getPlayerNext7GWFeatures(1, 12))
+    # players = getPlayersFromAPI()
+    # print(players[players['second_name'].str.contains('Semenyo', case=False)][['id', 'first_name', 'second_name']])
+
+    getPlayerNext7GWFeatures(82, 31)
+
+    # print(getPlayerNext7GWFeatures(1, 12))
 
     # getTopPlayersForGameweek(gameweek, season)
 

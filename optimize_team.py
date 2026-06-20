@@ -1,8 +1,8 @@
-import os
 import pulp
 
-PENALTY = 8  #done so that the optimization will prefer to make free transfers unless its absolutely sure that it will be a good trade
+PENALTY = 12  #done so that the optimization will prefer to make free transfers unless its absolutely sure that it will be a good trade
             #so we double the actual cost of making an extra costly transfer
+KEEP_BONUS = 5 #a small bonus so that we keep the players on our team that are doing well for longer even if their form is declining
 
 def optimizeFullTeam(players_next_gw, players):
     """Optimizes and gets a full team of 15 players based on player predicted points for the next 7 gameweeks
@@ -12,6 +12,9 @@ def optimizeFullTeam(players_next_gw, players):
     Returns:
         team: list of dicts with player info for the optimized team
     """
+    print("KEEP_BONUS:", KEEP_BONUS)
+    print("PENALTY:", PENALTY)
+
     problem = pulp.LpProblem("FantasyTeamOptimization", pulp.LpMaximize)
 
     #variables made (in a dict) for each possible player. They can be 0 or 1, where 1 means they made the team and 0 means they didnt
@@ -58,7 +61,8 @@ def optimizeFullTeam(players_next_gw, players):
                 "points": players[i][2],        #7GW predicted points
                 "points_next_gw": next_gw_points,       #next GW predicted points
                 "cost": players[i][5],
-                "id": players[i][6]
+                "id": players[i][6],
+                'total_points': players[i][7]
             })
 
     return team, (1000 - spent) #return the team and the remaining budget
@@ -100,7 +104,7 @@ def optimizeTeamFormation(team):
     
     return sorted(starters, key=lambda x: x['points_next_gw'], reverse=True), sorted(bench, key=lambda x: x['points_next_gw'], reverse=True), pulp.value(problem.objective)
 
-def determine_transfers(team, budget, free_transfers, next_gw, next_7):
+def determine_transfers(gameweek, team, budget, free_transfers, next_gw, next_7):
     """Determines the optimal transfers to make for the next gameweek based on player predicted points for the next 7 gameweeks and the next gameweek.
     Args:
         team: list of dicts with player info for the current team
@@ -121,10 +125,18 @@ def determine_transfers(team, budget, free_transfers, next_gw, next_7):
     owned_names = {(p['first_name'], p['second_name']) for p in team}
     owned = [1 if (next_7[i][0], next_7[i][1]) in owned_names else 0 for i in range(len(next_7))]
 
-    paid_transfers = pulp.LpVariable("paid_transfers", lowBound=0)
+    def keepBonus(i):
+        owned_i = owned[i]
+        premium_i = float(next_7[i][7] / max(1, gameweek - 1)) >= 4.0 #the points that they have gotten in all games so far must be >= 4. Max is to avoid divide by 0 error
+        if owned_i and premium_i:
+            return KEEP_BONUS
+        else:
+            return 0
+
+    paid_transfers = pulp.LpVariable("paid_transfers", lowBound=0, cat=pulp.LpInteger)
     problem += paid_transfers >= (15 - pulp.lpSum(owned[i] * x[i] for i in range(len(next_7)))) - free_transfers #number of paid transfers must be at least the number of new players in the team minus the free transfers available
 
-    problem += (pulp.lpSum(next_7[i][2] * x[i] for i in range(len(next_7))) - (4+PENALTY) * paid_transfers) #maximize points of new team minus 4 points for each paid transfer
+    problem += (pulp.lpSum((next_7[i][2] + keepBonus(i)) * x[i] for i in range(len(next_7))) - (4+PENALTY) * paid_transfers) #maximize points of new team minus 4 points for each paid transfer
 
     squad_value = sum(next_7[i][5] for i in range(len(next_7)) if owned[i]) #value of the players in the new team that are already owned
     total_funds = budget + squad_value 
@@ -170,7 +182,8 @@ def determine_transfers(team, budget, free_transfers, next_gw, next_7):
                 "points": next_7[i][2],        #7GW predicted points
                 "points_next_gw": next_gw_points,       #next GW predicted points
                 "cost": next_7[i][5],
-                "id": next_7[i][6]
+                "id": next_7[i][6],
+                'total_points': next_7[i][7]
             })
 
     new_budget = total_funds - spent
@@ -178,9 +191,9 @@ def determine_transfers(team, budget, free_transfers, next_gw, next_7):
     free_left = max(0, free_transfers - transfers_made)
 
     if pulp.LpStatus[problem.status] != "Optimal": #the optimization didnt find a solution
-        return team, budget, free_transfers, team 
+        return team, budget, free_transfers, 0, team 
     
-    return new_team, new_budget, free_left, team
+    return new_team, new_budget, free_left, int(round(paid_transfers.varValue)), team    
 
 
 if __name__ == "__main__":

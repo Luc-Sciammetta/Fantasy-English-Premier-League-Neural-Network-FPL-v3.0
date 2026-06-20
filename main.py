@@ -34,13 +34,13 @@ def getCurrentGameweek():
 
 def getBudget():
     """Gets the current budget from the budget.txt file."""
-    budget_file = open(r"teamInfo2/budget.txt", "r")
+    budget_file = open(r"teamInfo/budget.txt", "r")
     budgets = budget_file.readlines()
     return int(budgets[-1]) #the last value in the file is the current budget
 
 def getTeam(players_next_gw, player_next_7_points):
     """Gets the current team from the team.txt file."""
-    team_file = open(r"teamInfo2/team.txt", "r")
+    team_file = open(r"teamInfo/team.txt", "r")
     teams = team_file.readlines()
     team = populateTeam(teams[-1].split(",")[:-1], players_next_gw, player_next_7_points)
     return team
@@ -83,29 +83,44 @@ def populateTeam(player_ids, players_next_gw, player_next_7_points):
 
 def getTransfers():
     """Gets the current number of transfers from the transfers.txt file."""
-    transfers_file = open(r"teamInfo2/transfers.txt", "r")
+    transfers_file = open(r"teamInfo/transfers.txt", "r")
     transfers = transfers_file.readlines()
     return (int(transfers[-1]) + 1) if int(transfers[-1]) < 5 else 5 
 
+def getChips():
+    """Gets the available chips from the chips.txt file."""
+    file = open(r"teamInfo/chips.txt", "r")
+    line = file.readlines()
+    available_chips = line[-1].split(",")
+    return available_chips
+
 def saveBudget(val):
     """Saves the current budget to the budget.txt file."""
-    budget_file = open(r"teamInfo2/budget.txt", "a")
+    budget_file = open(r"teamInfo/budget.txt", "a")
     budget_file.write(str(val) + "\n")
     budget_file.close()
 
 def saveTransfers(val):
     """Saves the current number of transfers to the transfers.txt file."""
-    transfers_file = open(r"teamInfo2/transfers.txt", "a")
+    transfers_file = open(r"teamInfo/transfers.txt", "a")
     transfers_file.write(str(val) + "\n")
     transfers_file.close()
 
 def saveTeam(team):
     """Saves the current team to the team.txt file."""
-    team_file = open(r"teamInfo2/team.txt", "a")
+    team_file = open(r"teamInfo/team.txt", "a")
     for player in team:
         team_file.write(str(player['id']) + ",")
     team_file.write("\n")
     team_file.close()
+
+def saveChips(chips):
+    """Saves the available chips to the chips.txt file."""
+    file = open(r"teamInfo/chips.txt", "a")
+    for chip in chips:
+        file.write(chip + ",")
+    file.write("\n")
+    file.close()
 
 def getTeamExpected7GWPoints(team):
     total_points = 0
@@ -148,6 +163,9 @@ def run(gw):
     # print("------------ Welcome to the Fantasy EPL AI ------------\n")
     gameweek = getCurrentGameweek()
     gameweek = gw 
+    if gameweek == 1 or gameweek == 19: #get a new set of chips every 1/2 of the season
+        chips = ['wildcard', 'free hit', 'x3 capitain', 'bench boost']
+
     # print("Initializing. Doing pre-stuff...")
     players_next_gw, player_next_7_points = getTopPlayersForGameweek(gameweek, SEASON)
     # print("\nDone. Now Optimizing Team.")
@@ -158,24 +176,27 @@ def run(gw):
         print("Making a new team...")
         team, budget = optimizeFullTeam(players_next_gw, player_next_7_points)
         transfers = 0
+        paid_transfers = 0
     else:
         budget = getBudget()
         team = getTeam(players_next_gw, player_next_7_points)
         transfers = getTransfers()
+        chips = getChips()
 
         print("Current Budget:", budget)
         print("Current Transfers Amount:", transfers)
+        print("Current Chips:", chips)
         # print("\nCurrent Team:")
         # for x in team:
         #     print(x['first_name'], x['second_name'])
 
-        team, budget, transfers, old_team = determine_transfers(team, budget, transfers, players_next_gw, player_next_7_points) #the new team, the remaining budget, the remaining transfers
+        team, budget, transfers, paid_transfers, old_team = determine_transfers(gameweek, team, budget, transfers, players_next_gw, player_next_7_points) #the new team, the remaining budget, the remaining transfers
         old_team_value = getTeamExpected7GWPoints(old_team)
         new_team_value = getTeamExpected7GWPoints(team)
 
         #if the transfers that we make improve the team by x points in the next 7 gameweeks
         #we include the gameweek != 38 since if its the last gameweek, there is no next gw, so make all the transfers we want to have the best possible team for the last gw
-        if new_team_value - old_team_value > TRANSFER_POINTS_THRESHOLD and gameweek != 38: 
+        if (new_team_value - old_team_value > TRANSFER_POINTS_THRESHOLD) or gameweek == 38: 
             #make the changes
             print("\nTransfers will improve the team by:", new_team_value - old_team_value, "points")
             print("Old Team Expected 7GW Points:", old_team_value)
@@ -214,6 +235,7 @@ def run(gw):
     saveTeam(team)
     saveBudget(budget)
     saveTransfers(transfers)
+    saveChips(chips)
 
     # print("Saved Team!")
     # print("\nNew Budget:", budget)
@@ -221,7 +243,7 @@ def run(gw):
     # print("Bye!")
 
     actual_points = calculateActualPoints(starters, bench, gameweek, SEASON)
-    return actual_points
+    return actual_points, paid_transfers
 
 def calculateActualPoints(starters, bench, gameweek, season=SEASON):
     """Sums the actual points the starting XI scored in `gameweek`, applying
@@ -269,15 +291,23 @@ if __name__ == "__main__":
     print("Starting Fantasy EPL AI...")
     start = time.time()
     season_total = 0
+    paid_transfers_total = 0
     points_each_gw = []
+    paid_transfers_each_gw = []
     for i in range(1, 39): #simulate the season
         start_run = time.time()
-        gw_points = run(i)
+        gw_points, paid_transfers = run(i)
         season_total += gw_points
+        paid_transfers_total += paid_transfers
         points_each_gw.append(gw_points)
+        paid_transfers_each_gw.append(paid_transfers)
         print(f"\nTotal points after GW{i}: {season_total}")
+        print(f"\nPaid Transfers for GW{i}: {paid_transfers}")
         print(f"Execution time for GW{i}: {float((time.time() - start_run)/60)} minutes")
     end = time.time()
     print(f"\nExecution time: {float((end - start)/60)} minutes")
     print(f"Total points for the season: {season_total}")
+    print(f"Total paid transfers for the season: {paid_transfers_total}. This is a penalty of {paid_transfers_total * -4} points")
     plot_list(points_each_gw, title="Points Each Gameweek", xlabel="Gameweek", ylabel="Points")
+    plot_list(paid_transfers_each_gw, title="Paid Transfers Each Gameweek", xlabel="Gameweek", ylabel="Transfers")
+
