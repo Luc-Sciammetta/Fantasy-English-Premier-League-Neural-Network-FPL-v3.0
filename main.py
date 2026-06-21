@@ -91,7 +91,7 @@ def getChips():
     """Gets the available chips from the chips.txt file."""
     file = open(r"teamInfo/chips.txt", "r")
     line = file.readlines()
-    available_chips = line[-1].split(",")
+    available_chips = line[-1].split(",")[:-1]
     return available_chips
 
 def saveBudget(val):
@@ -165,6 +165,8 @@ def run(gw):
     gameweek = gw 
     if gameweek == 1 or gameweek == 19: #get a new set of chips every 1/2 of the season
         chips = ['wildcard', 'free hit', 'x3 capitain', 'bench boost']
+    else:
+        chips = getChips()
 
     # print("Initializing. Doing pre-stuff...")
     players_next_gw, player_next_7_points = getTopPlayersForGameweek(gameweek, SEASON)
@@ -174,14 +176,15 @@ def run(gw):
 
     if gameweek == 1:
         print("Making a new team...")
-        team, budget = optimizeFullTeam(players_next_gw, player_next_7_points)
+        team = getTeam(players_next_gw, player_next_7_points)
+        budget = 0
+        # team, budget = optimizeFullTeam(players_next_gw, player_next_7_points)
         transfers = 0
         paid_transfers = 0
     else:
         budget = getBudget()
         team = getTeam(players_next_gw, player_next_7_points)
         transfers = getTransfers()
-        chips = getChips()
 
         print("Current Budget:", budget)
         print("Current Transfers Amount:", transfers)
