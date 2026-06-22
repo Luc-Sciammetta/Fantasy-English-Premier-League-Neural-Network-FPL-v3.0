@@ -187,6 +187,7 @@ def run(gw):
         budget = getBudget()
         team = getTeam(players_next_gw, player_next_7_points)
         transfers = getTransfers()
+        old_transfers = transfers
 
         print("Current Budget:", budget)
         print("Current Transfers Amount:", transfers)
@@ -248,7 +249,7 @@ def run(gw):
     elif playing_chip == 1: # free hit
         print("\nPlaying Free Hit Chip!")
         fh_budget = getTeamValue(team, budget)
-        team, fh_budget = optimizeFreeHitTeam(players_next_gw, fh_budget)
+        team, fh_budget = optimizeFreeHitTeam(players_next_gw, fh_budget, player_next_7_points)
         starters, bench, capitain, vice_captain = getFormation(team)
         chips.remove('free hit')
     elif playing_chip == 2: # triple captain
@@ -265,14 +266,15 @@ def run(gw):
         print("Vice Captain:", vice_captain['first_name'], vice_captain['second_name'])
   
     if playing_chip == 1: #free hit: banked transfers are lost, reset to 1 next week
-        saveTransfers(0)
+        saveTransfers(old_transfers - 1)
     else:
         saveTeam(team)
         saveBudget(budget)
         if playing_chip == 0: #wildcard: keep what we have
-            saveTransfers(transfers - 1)
+            saveTransfers(old_transfers - 1)
         else: #everything else
             saveTransfers(transfers)
+    saveChips(chips)
 
     # print("Saved Team!")
     # print("\nNew Budget:", budget)

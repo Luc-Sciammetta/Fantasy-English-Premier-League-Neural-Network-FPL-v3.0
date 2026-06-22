@@ -195,7 +195,7 @@ def determine_transfers(gameweek, team, budget, free_transfers, next_gw, next_7)
     
     return new_team, new_budget, free_left, int(round(paid_transfers.varValue)), team  
 
-def optimizeFreeHitTeam(players_next_gw, budget):
+def optimizeFreeHitTeam(players_next_gw, budget, players_next_7):
     problem = pulp.LpProblem("FantasyTeamOptimization", pulp.LpMaximize)
 
     #variables made (in a dict) for each possible player. They can be 0 or 1, where 1 means they made the team and 0 means they didnt
@@ -242,7 +242,8 @@ def optimizeFreeHitTeam(players_next_gw, budget):
                 "points_next_gw": next_gw_points,       #next GW predicted points
                 "cost": players_next_gw[i][6],
                 "id": players_next_gw[i][7],
-                'total_points': players_next_gw[i][8]
+                'total_points': players_next_gw[i][8],
+                'points': players_next_7[i][2]       
             })
 
     return team, (budget - spent) #return the team and the remaining budget  

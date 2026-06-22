@@ -1,11 +1,11 @@
 from optimize_team import optimizeFreeHitTeam, optimizeTeamFormation, optimizeFullTeam
 
-FREE_HIT_THRESH = 30
-TC_THRESH = 14.5
+FREE_HIT_THRESH = 13
+TC_THRESH = 14.5 #will probably need a change since its hard to get to 14.5 w/out the factor decreasing it
 BENCH_THRESH = 26
-WC_THRESH = 50
+WC_THRESH = 65
 
-THRESH_DECREASE_FACTOR = 0.90
+THRESH_DECREASE_FACTOR = 0.85
 RAMP_GWS = 6
 
 def lastChipWindow(current_gw):
@@ -42,7 +42,7 @@ def getFormation(team):
 
     return starters, bench, capitain, vice_captain
 
-def determineFreeHit(team, current_gw, fixturesdf, starters, players_next_gw, fc_thresh, team_budget):
+def determineFreeHit(team, current_gw, fixturesdf, starters, players_next_gw, fc_thresh, team_budget, players_next_7):
     """Loop for every gw till the chip reset window, calculate how many points we'd loose from blanks, and then get then put that in a table."""
     last_gw = lastChipWindow(current_gw)
     table = {}
@@ -58,18 +58,23 @@ def determineFreeHit(team, current_gw, fixturesdf, starters, players_next_gw, fc
             avg_score = float(player['points'] / games_next_7) #average amount of points they'll score in this gw if they had one (based of off next_7)
             total_score += avg_score
         
-        table[gw] = total_score
+        if total_score > 0:
+            table[gw] = total_score
 
     if any(value > 0 for value in table.values()): #if any value in the dict is >0, then we have at least one blank gw
-        return table, 0 #here is the list of gws to play, normal flag
+        max_gw = max(table, key=table.get)
+        max_score = table[max_gw]
+        return {max_gw: max_score}, 0 #best gw to play free hit
     
 
     # ----- if we get here, then we look at calculating the optimal team vs our team -----
     current_team_budget = getTeamValue(team, team_budget)
     current_team_value = calculateTeamPoints(starters, 'points_next_gw')
-    opt_team, _ = optimizeFreeHitTeam(players_next_gw, current_team_budget)
+    opt_team, _ = optimizeFreeHitTeam(players_next_gw, current_team_budget, players_next_7)
     opt_starters, _, _, _ = getFormation(opt_team)
     opt_team_value = calculateTeamPoints(opt_starters, 'points_next_gw')
+
+    print("\nFREE HIT OPT-TEAM DIFF:", round(opt_team_value - current_team_value, 2))
 
     if opt_team_value - current_team_value > fc_thresh:
         return {current_gw: opt_team_value - current_team_value}, 1 #could play free hit this week, but "flag" this gw
@@ -84,7 +89,7 @@ def determineTripleCaptain(current_gw, starters, tc_thresh):
             return {}, 0 #not playing TC this week
     
     #if players are above the threshold, we can play triple captain
-    return {current_gw: (candidates[0]['points_next_gw'])}, 0 #dont multiply by 3 since the chip will get us another ['points_next_gw'] points, so thats how much its worth
+    return {current_gw: float(candidates[0]['points_next_gw'])}, 0 #dont multiply by 3 since the chip will get us another ['points_next_gw'] points, so thats how much its worth
 
 def determineBenchBoost(current_gw, bench, bb_thresh):
     total = 0
@@ -93,10 +98,10 @@ def determineBenchBoost(current_gw, bench, bb_thresh):
     
     if total < bb_thresh:
         return {}, 0
-    return {current_gw: total}, 0
+    return {current_gw: float(total)}, 0
 
 def determineWildCard(team, current_gw, players_next_7, players_next_gw, wc_thresh, team_budget):
-    if current_gw < 4: #dont play wildcard in the first 4 gameweeks, since we can make free transfers and we dont have enough data to optimize a team yet
+    if (current_gw < 4 and lastChipWindow(current_gw) == 18): #dont play wildcard in the first 4 gameweeks from the window
         return {}, 0
 
     current_team_budget = getTeamValue(team, team_budget)
@@ -112,7 +117,7 @@ def determineWildCard(team, current_gw, players_next_7, players_next_gw, wc_thre
 def changeThesholds(current_gw):
     last_gw = lastChipWindow(current_gw)
     if last_gw - current_gw <= RAMP_GWS: #decrease the thresholds
-        print("Getting close to end of chip window, decreasing thresholds.")
+        print("\nGetting close to end of chip window, decreasing thresholds.")
         fc_thresh = FREE_HIT_THRESH * (THRESH_DECREASE_FACTOR ** (RAMP_GWS+1 - (last_gw - current_gw)))
         tc_thresh = TC_THRESH * (THRESH_DECREASE_FACTOR ** (RAMP_GWS+1 - (last_gw - current_gw)))
         bb_thresh = BENCH_THRESH * (THRESH_DECREASE_FACTOR ** (RAMP_GWS+1 - (last_gw - current_gw)))
@@ -124,7 +129,7 @@ def whatToPlay(current_gw, team, starters, bench, fixturesdf, players_next_7, pl
     fc_thresh, tc_thresh, bb_thresh, wc_thresh = changeThesholds(current_gw)
 
     if 'free hit' in chips:
-        fh_table, fh_flag = determineFreeHit(team, current_gw, fixturesdf, starters, players_next_gw, fc_thresh, team_budget)
+        fh_table, fh_flag = determineFreeHit(team, current_gw, fixturesdf, starters, players_next_gw, fc_thresh, team_budget, players_next_7)
     else:
         fh_table, fh_flag = {}, 0
 
@@ -158,7 +163,7 @@ def whatToPlay(current_gw, team, starters, bench, fixturesdf, players_next_7, pl
         scores[2] = tc_table[current_gw]
     if bb_table:
         scores[3] = bb_table[current_gw]
-    if fh_table:
+    if fh_table and fh_flag == 1:
         scores[1] = fh_table[current_gw]
     if wc_table:
         scores[0] = wc_table[current_gw] / 7 #divide by 7 to get the average points per gameweek, since wild card affects all 7 gameweeks. This way we can compare it more fairly to the other chips which only affect one gameweek.
