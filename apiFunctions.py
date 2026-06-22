@@ -131,10 +131,10 @@ def buildOpponentXGCLookup(through_gw):
     season_data = pd.concat(all_player_data, ignore_index=True)
     return computeOpponentxGCLookup(season_data)
 
-def determineBlankDoubleGWs(player_id, current_gw, fixturesdf):
+def determineBlankDoubleGWs(player_id, current_gw, endGw, fixturesdf):
     player_season_stats, _ = getPlayerFromID(player_id)
     upcoming_games = []
-    for i in range(current_gw, current_gw+7):
+    for i in range(current_gw, endGw+1): #include the +1 so that we include the end_gw fixture
         next_fuxture = fixturesdf[(fixturesdf['event'] == i) & ((fixturesdf['team_h'] == player_season_stats['team']) | (fixturesdf['team_a'] == player_season_stats['team']))] #get the next fixture for the player
         if len(next_fuxture) == 0: #blank gw
             upcoming_games.append(0)

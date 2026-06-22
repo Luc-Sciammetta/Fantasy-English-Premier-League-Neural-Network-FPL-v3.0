@@ -691,7 +691,7 @@ def getTopPlayersForGameweek(gameweek, season):
 
     # print("calculating xp stats")
     for _, player in full_player_id_list.iterrows():
-        double_blanks = determineBlankDoubleGWs(player['id'], gameweek, fixtures_df)
+        double_blanks = determineBlankDoubleGWs(player['id'], gameweek, gameweek+7, fixtures_df)
         stats, player_stat = calculatePlayerExpectedStats(player['id'], gameweek, season, full_player_id_list, fixtures_df, xgc_lookup)
         
         #*next 7 points calculation
@@ -702,16 +702,16 @@ def getTopPlayersForGameweek(gameweek, season):
         if double_blanks[0] == 0: #^this gw is a blank
             #! the stats variable would be a dict with all values at -1
             xp = 0
-            player_xp.append([player['first_name'], player['second_name'], player['team'], xp, stats])
+            player_xp.append([player['first_name'], player['second_name'], player['team'], xp, stats, player['element_type'], player['now_cost'], player['id'], player['total_points']])
         elif stats is None:                              # fixtures say plays, but no history row — no usable stats
             xp = 0
-            player_xp.append([player['first_name'], player['second_name'], player['team'], xp, stats])
+            player_xp.append([player['first_name'], player['second_name'], player['team'], xp, stats, player['element_type'], player['now_cost'], player['id'], player['total_points']])
         elif double_blanks[0] == 1: #^normal gw
             xp = getExpectedPoints(stats, player['element_type']) + ALPHA * next_7_points #combine with expected long term points to promote consistency (a player who has a higher x7p will probably do well, so include that)
-            player_xp.append([player['first_name'], player['second_name'], player['team'], round(xp, 4), stats])
+            player_xp.append([player['first_name'], player['second_name'], player['team'], round(xp, 4), stats, player['element_type'], player['now_cost'], player['id'], player['total_points']])
         else: #^multiply our xp by the amount of games we'll play
             xp = double_blanks[0] * getExpectedPoints(stats, player['element_type']) + (ALPHA * next_7_points) #combine with expected long term points to promote consistency (a player who has a higher x7p will probably do well, so include that)
-            player_xp.append([player['first_name'], player['second_name'], player['team'], round(xp, 4), stats])
+            player_xp.append([player['first_name'], player['second_name'], player['team'], round(xp, 4), stats, player['element_type'], player['now_cost'], player['id'], player['total_points']])
 
     player_xp = sorted(player_xp, key=lambda p: p[3], reverse=True)
     player_next_7_points = sorted(player_next_7_points, key=lambda p: p[2], reverse=True)

@@ -4,7 +4,7 @@ PENALTY = 12  #done so that the optimization will prefer to make free transfers 
             #so we double the actual cost of making an extra costly transfer
 KEEP_BONUS = 5 #a small bonus so that we keep the players on our team that are doing well for longer even if their form is declining
 
-def optimizeFullTeam(players_next_gw, players):
+def optimizeFullTeam(players_next_gw, players, budget):
     """Optimizes and gets a full team of 15 players based on player predicted points for the next 7 gameweeks
     Args:
         players_next_gw: list of tuples (first_name, second_name, predicted_points_next_gw) for all players
@@ -12,8 +12,8 @@ def optimizeFullTeam(players_next_gw, players):
     Returns:
         team: list of dicts with player info for the optimized team
     """
-    print("KEEP_BONUS:", KEEP_BONUS)
-    print("PENALTY:", PENALTY)
+    # print("KEEP_BONUS:", KEEP_BONUS)
+    # print("PENALTY:", PENALTY)
 
     problem = pulp.LpProblem("FantasyTeamOptimization", pulp.LpMaximize)
 
@@ -23,7 +23,7 @@ def optimizeFullTeam(players_next_gw, players):
     problem += pulp.lpSum(players[i][2] * x[i] for i in range(0, len(players))) #what we want to maximize (total points)
 
     problem += sum(x[i] for i in range(0, len(players))) == 15 #15 players in the team
-    problem += pulp.lpSum(players[i][5] * x[i] for i in range(0, len(players))) <= 1000 #total cost must be less than or equal to 100
+    problem += pulp.lpSum(players[i][5] * x[i] for i in range(0, len(players))) <= budget #total cost must be less than or equal to 100
 
     problem += sum(x[i] for i in range(0, len(players)) if players[i][4] == 1) == 2 #2 goalkeepers
     problem += sum(x[i] for i in range(0, len(players)) if players[i][4] == 2) == 5 #5 defenders
@@ -65,7 +65,7 @@ def optimizeFullTeam(players_next_gw, players):
                 'total_points': players[i][7]
             })
 
-    return team, (1000 - spent) #return the team and the remaining budget
+    return team, (budget - spent) #return the team and the remaining budget
 
 def optimizeTeamFormation(team):
     """Optimizes the team formation for the next gameweek based on predicted points for the next gameweek.
@@ -193,7 +193,59 @@ def determine_transfers(gameweek, team, budget, free_transfers, next_gw, next_7)
     if pulp.LpStatus[problem.status] != "Optimal": #the optimization didnt find a solution
         return team, budget, free_transfers, 0, team 
     
-    return new_team, new_budget, free_left, int(round(paid_transfers.varValue)), team    
+    return new_team, new_budget, free_left, int(round(paid_transfers.varValue)), team  
+
+def optimizeFreeHitTeam(players_next_gw, budget):
+    problem = pulp.LpProblem("FantasyTeamOptimization", pulp.LpMaximize)
+
+    #variables made (in a dict) for each possible player. They can be 0 or 1, where 1 means they made the team and 0 means they didnt
+    x = pulp.LpVariable.dict("player", range(0, len(players_next_gw)), 0, 1, cat=pulp.LpInteger)
+
+    problem += pulp.lpSum(players_next_gw[i][3] * x[i] for i in range(0, len(players_next_gw))) #what we want to maximize (total points)
+
+    problem += sum(x[i] for i in range(0, len(players_next_gw))) == 15 #15 players in the team
+    problem += pulp.lpSum(players_next_gw[i][6] * x[i] for i in range(0, len(players_next_gw))) <= budget #total cost must be less than or equal to the available budget
+
+    problem += sum(x[i] for i in range(0, len(players_next_gw)) if players_next_gw[i][5] == 1) == 2 #2 goalkeepers
+    problem += sum(x[i] for i in range(0, len(players_next_gw)) if players_next_gw[i][5] == 2) == 5 #5 defenders
+    problem += sum(x[i] for i in range(0, len(players_next_gw)) if players_next_gw[i][5] == 3) == 5 #5 midfielders
+    problem += sum(x[i] for i in range(0, len(players_next_gw)) if players_next_gw[i][5] == 4) == 3 #3 forwards
+
+    for team in range(1, 21): #for every team in the league
+        problem += sum(x[i] for i in range(0, len(players_next_gw)) if players_next_gw[i][2] == team) <= 3 #max 3 players from the same team
+
+    problem.solve(pulp.PULP_CBC_CMD(msg=0))
+
+    team = []
+    spent = 0
+
+    # print("Status:", pulp.LpStatus[problem.status]) #determines if the optimization was successful
+    # print("Total Points:", pulp.value(problem.objective)) #total points of the optimized team
+    # print("Selected Players:")
+    for i in range(0, len(players_next_gw)):
+        if x[i].varValue == 1: #if the player is selected in the team
+            # print(players[i][0], players[i][1], players[i][3], "Expected Points:", players[i][2])
+            
+            spent += players_next_gw[i][6]
+
+            next_gw_points = next(
+                (p[3] for p in players_next_gw
+                if p[0] == players_next_gw[i][0] and p[1] == players_next_gw[i][1]),
+                0.0   # default: player not in next-GW list -> 0, not None
+            )
+
+            team.append({
+                "first_name": players_next_gw[i][0],
+                "second_name": players_next_gw[i][1],
+                "team": players_next_gw[i][2],
+                "element_type": players_next_gw[i][5],
+                "points_next_gw": next_gw_points,       #next GW predicted points
+                "cost": players_next_gw[i][6],
+                "id": players_next_gw[i][7],
+                'total_points': players_next_gw[i][8]
+            })
+
+    return team, (budget - spent) #return the team and the remaining budget  
 
 
 if __name__ == "__main__":

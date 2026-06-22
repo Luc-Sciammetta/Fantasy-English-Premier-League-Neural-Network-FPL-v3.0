@@ -6,8 +6,10 @@ import pprint
 import time
 import matplotlib.pyplot as plt
 
-from optimize_team import optimizeFullTeam, optimizeTeamFormation, determine_transfers
+from optimize_team import optimizeFullTeam, optimizeTeamFormation, determine_transfers, optimizeFreeHitTeam
 from predictPlayerPoints import getTopPlayersForGameweek
+from apiFunctions import getFixturesFromAPI
+from determineChips import getFormation, getTeamValue, getFormation, whatToPlay
 
 SEASON = os.environ.get('SEASON', 2526)  # Default to 2526 if not set
 TRANSFER_POINTS_THRESHOLD = 22 
@@ -205,7 +207,7 @@ def run(gw):
             print("Old Team Expected 7GW Points:", old_team_value)
             print("New Team Expected 7GW Points:", new_team_value)
             out_t, in_t = determineWhoChanged(old_team, team)
-            
+                
             print("\nPlayers Transfered Out:")
             for x in out_t:
                 print(x['first_name'], x['second_name'])
@@ -219,12 +221,9 @@ def run(gw):
             print("New Team Expected 7GW Points:", new_team_value)
             team = old_team
             transfers = getTransfers() #we want the amount of transfers we have available this week
+            
 
-    starters, bench, value = optimizeTeamFormation(team)
-    capitain = starters[0]
-    vice_captain = starters[1]
-    print("\nCaptain:", capitain['first_name'], capitain['second_name'])
-    print("Vice Captain:", vice_captain['first_name'], vice_captain['second_name'])
+    starters, bench, capitain, vice_captain = getFormation(team)
 
     # print(f"\nOptimized Team for Gameweek {gameweek}:")
     # print("Starters:")
@@ -235,20 +234,55 @@ def run(gw):
     # for benched in bench:
     #     print(benched["first_name"], benched["second_name"], benched["team"], "Expected Points:", benched["points_next_gw"])
     
-    saveTeam(team)
-    saveBudget(budget)
-    saveTransfers(transfers)
-    saveChips(chips)
+
+    # ================ determine which chips to play when ===============
+    fixturesdf = getFixturesFromAPI()
+    playing_chip = whatToPlay(gameweek, team, starters, bench, fixturesdf, player_next_7_points, players_next_gw, budget, chips)
+
+    if playing_chip == 0: # wildcard
+        print("\nPlaying Wildcard Chip!")
+        team_budget = getTeamValue(team, budget)
+        team, budget = optimizeFullTeam(players_next_gw, player_next_7_points, team_budget)
+        starters, bench, capitain, vice_captain = getFormation(team)
+        chips.remove('wildcard')
+    elif playing_chip == 1: # free hit
+        print("\nPlaying Free Hit Chip!")
+        fh_budget = getTeamValue(team, budget)
+        team, fh_budget = optimizeFreeHitTeam(players_next_gw, fh_budget)
+        starters, bench, capitain, vice_captain = getFormation(team)
+        chips.remove('free hit')
+    elif playing_chip == 2: # triple captain
+        print("\nPlaying Triple Captain Chip!")
+        print("\nx3 Captain:", capitain['first_name'], capitain['second_name'])
+        print("x3 Vice Captain:", vice_captain['first_name'], vice_captain['second_name'])
+        chips.remove('x3 capitain')
+    elif playing_chip == 3: # bench boost
+        print("\nPlaying Bench Boost Chip!")
+        chips.remove('bench boost')
+    else: # no chip
+        print("\nNot playing any chips this week.")
+        print("\nCaptain:", capitain['first_name'], capitain['second_name'])
+        print("Vice Captain:", vice_captain['first_name'], vice_captain['second_name'])
+  
+    if playing_chip == 1: #free hit: banked transfers are lost, reset to 1 next week
+        saveTransfers(0)
+    else:
+        saveTeam(team)
+        saveBudget(budget)
+        if playing_chip == 0: #wildcard: keep what we have
+            saveTransfers(transfers - 1)
+        else: #everything else
+            saveTransfers(transfers)
 
     # print("Saved Team!")
     # print("\nNew Budget:", budget)
     # print("New Transfers Amount:", transfers)
     # print("Bye!")
 
-    actual_points = calculateActualPoints(starters, bench, gameweek, SEASON)
+    actual_points = calculateActualPoints(starters, bench, gameweek, playing_chip, SEASON)
     return actual_points, paid_transfers
 
-def calculateActualPoints(starters, bench, gameweek, season=SEASON):
+def calculateActualPoints(starters, bench, gameweek, playing_chip, season=SEASON):
     """Sums the actual points the starting XI scored in `gameweek`, applying
     captain (top predicted) and vice-captain (2nd predicted) logic."""
     live = requests.get(
@@ -273,6 +307,8 @@ def calculateActualPoints(starters, bench, gameweek, season=SEASON):
     print(f"\nBENCH breakdown (predicted -> actual -> next_7):")
     for p in bench:
         actual = points_by_id.get(p['id'], 0)
+        if playing_chip == 3:
+            total += actual
         print(f"  {p['first_name']} {p['second_name']:<25} "
               f"pred {p['points_next_gw']:>5.2f} -> actual {actual} -> next_7 {p['points']:.2f}")
 
@@ -281,7 +317,11 @@ def calculateActualPoints(starters, bench, gameweek, season=SEASON):
         cap_used = captain
     else:
         cap_used = vice
-    total += points_by_id.get(cap_used['id'], 0)
+    
+    if playing_chip == 2:
+        total += points_by_id.get(cap_used['id'], 0) * 2 #triple capitain
+    else:
+        total += points_by_id.get(cap_used['id'], 0) #normal capitain
 
     print(f"Captain: {captain['first_name']} {captain['second_name']}, "
           f"VC: {vice['first_name']} {vice['second_name']} "
