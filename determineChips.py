@@ -1,12 +1,12 @@
 from optimize_team import optimizeFreeHitTeam, optimizeTeamFormation, optimizeFullTeam
 
-FREE_HIT_THRESH = 13
-TC_THRESH = 14.5 #will probably need a change since its hard to get to 14.5 w/out the factor decreasing it
+FREE_HIT_THRESH = 11
+TC_THRESH = 14.5 
 BENCH_THRESH = 26
 WC_THRESH = 65
 
-THRESH_DECREASE_FACTOR = 0.85
-RAMP_GWS = 6
+THRESH_DECREASE_FACTOR = 0.92
+RAMP_GWS = 5
 
 def lastChipWindow(current_gw):
     """Returns when the deadline to play all chips are based on what gameweek it is currently."""
