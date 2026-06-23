@@ -6,7 +6,7 @@ import urllib.parse
 import ssl
 ssl._create_default_https_context = ssl._create_unverified_context
 
-seasons = [2223, 2324, 2425] #1819, 1920, 2021, 2122, 2526
+seasons = [2223, 2324, 2425, 2526] #1819, 1920, 2021, 2122, 2526
 total_FPL_players = { #total number of FPL teams in each season (roughly)
     2122: 9170000.0,
     2223: 11450000.0,

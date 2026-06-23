@@ -238,7 +238,7 @@ def getDataset():
             populate_team_gw_data(all_data, gameweek_fixtures, fixtures_df, season)
 
     final_df = pd.DataFrame(all_data)
-    final_df.to_csv('predictCleanSheets/cleansheet_training_data.csv', index=False)
+    final_df.to_csv('predictExpectedGoalsConceded/cleansheet_training_data.csv', index=False)
     print(f"Done. {len(final_df)} rows saved")
     return final_df
             

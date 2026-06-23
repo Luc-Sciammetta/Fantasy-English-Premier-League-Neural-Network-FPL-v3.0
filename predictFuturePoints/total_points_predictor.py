@@ -26,15 +26,17 @@ class FPLModel(nn.Module):
     def __init__(self, input_size):
         super().__init__()
         self.network = nn.Sequential(
-            nn.Linear(input_size, 128), 
+            nn.Linear(input_size, 512), 
             nn.ReLU(), 
-            nn.Dropout(0.3), 
+            nn.Dropout(0.15), 
+            nn.Linear(512, 256), 
+            nn.ReLU(),
+            nn.Dropout(0.15),
+            nn.Linear(256, 128), 
+            nn.ReLU(),
             nn.Linear(128, 64), 
             nn.ReLU(),
-            nn.Dropout(0.3),
-            nn.Linear(64, 32), 
-            nn.ReLU(),
-            nn.Linear(32, 1), 
+            nn.Linear(64, 1)
         )
     
     def forward(self, x):
@@ -170,5 +172,5 @@ def main():
     # model.load_state_dict(torch.load('fpl_model.pth'))
 
 if __name__ == '__main__':
-    for i in range(0, 20):
+    for i in range(0, 40):
         main()

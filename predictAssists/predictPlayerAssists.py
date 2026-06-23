@@ -9,8 +9,8 @@ print("loaded ", len(df), "rows")
 target = 'assists'
 drop_cols = ['kickoff_time', 'opponent_team_id', target] 
 
-train_df = df[df['season'].isin([2223, 2324])]
-test_df = df[df['season'].isin([2425, 2526])]
+train_df = df[df['season'].isin([2223, 2324, 2425])]
+test_df = df[df['season'].isin([2526])]
 
 X_train = train_df.drop(columns=drop_cols)
 y_train = train_df[target]
@@ -23,7 +23,7 @@ print(f"Target stats:\n{y_train.describe()}")
 model = xgb.XGBRegressor(
     objective='count:poisson',
     n_estimators = 500,
-    max_depth = 4, 
+    max_depth = 5, 
     learning_rate = 0.05,
     random_state = 42,
     eval_metric='poisson-nloglik',
